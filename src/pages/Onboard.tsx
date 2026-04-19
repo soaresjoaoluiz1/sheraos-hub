@@ -117,7 +117,7 @@ export default function Onboard() {
       <div style={styles.wrapper}>
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <img src="https://drosagencia.com.br/wp-content/uploads/2025/12/DROS-LOGO-1-1024x1024.png" alt="Dros" style={{ height: 48, marginBottom: 12 }} />
+          <img src="/hub/logo-dros.png" alt="Dros" style={{ height: 48, marginBottom: 12 }} />
           <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Formulario de Entrada</h1>
           <p style={{ fontSize: 14, color: '#9B96B0' }}>{clientName}</p>
         </div>

@@ -18,7 +18,7 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 20 }}>
-          <img src="https://drosagencia.com.br/wp-content/uploads/2025/12/DROS-LOGO-1-1024x1024.png" alt="Dros" style={{ height: 80, marginBottom: 14 }} />
+          <img src="/hub/logo-dros.png" alt="Dros" style={{ height: 80, marginBottom: 14 }} />
           <h1 style={{ margin: 0 }}>Sheraos Hub</h1>
           <div className="subtitle" style={{ marginTop: 4 }}>Gestao de Projetos & Aprovacoes</div>
         </div>
