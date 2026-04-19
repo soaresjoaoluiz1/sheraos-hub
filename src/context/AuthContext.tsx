@@ -13,7 +13,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, '')
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(localStorage.getItem('dros_hub_token'))
+  const [token, setToken] = useState<string | null>(localStorage.getItem('sheraos_hub_token'))
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -21,7 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetch(`${BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => setUser(d.user))
-      .catch(() => { localStorage.removeItem('dros_hub_token'); setToken(null); setUser(null) })
+      .catch(() => { localStorage.removeItem('sheraos_hub_token'); setToken(null); setUser(null) })
       .finally(() => setLoading(false))
   }, [token])
 
@@ -29,10 +29,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await fetch(`${BASE}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
     if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Erro') }
     const data = await res.json()
-    localStorage.setItem('dros_hub_token', data.token); setToken(data.token); setUser(data.user)
+    localStorage.setItem('sheraos_hub_token', data.token); setToken(data.token); setUser(data.user)
   }
 
-  const logout = () => { localStorage.removeItem('dros_hub_token'); setToken(null); setUser(null) }
+  const logout = () => { localStorage.removeItem('sheraos_hub_token'); setToken(null); setUser(null) }
 
   return <AuthContext.Provider value={{ user, token, login, logout, loading }}>{children}</AuthContext.Provider>
 }

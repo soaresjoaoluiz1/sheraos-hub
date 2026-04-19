@@ -114,7 +114,7 @@ export default function Tasks() {
   const handleBulkAssign = async (userId: number | null) => { await bulkAssignTasks([...selected], userId); setSelected(new Set()); setShowBulkAssign(false); loadTasks() }
 
   const handleExport = async () => {
-    const token = localStorage.getItem('dros_hub_token')
+    const token = localStorage.getItem('sheraos_hub_token')
     const params = new URLSearchParams()
     if (filterClient) params.set('client_id', filterClient)
     if (filterStage) params.set('stage', filterStage)

@@ -9,7 +9,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
   const handlers = useRef(new Map<string, Set<Handler>>())
 
   useEffect(() => {
-    const token = localStorage.getItem('dros_hub_token')
+    const token = localStorage.getItem('sheraos_hub_token')
     if (!token) return
     const base = import.meta.env.BASE_URL.replace(/\/$/, '')
     const es = new EventSource(`${base}/api/events?token=${token}`)
