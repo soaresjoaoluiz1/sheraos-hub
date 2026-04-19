@@ -1,0 +1,34 @@
+services:
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hub:latest
+    container_name: hub-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET}
+    volumes:
+      - hub-data:/app/server/data
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=hub-net
+      - traefik.http.routers.hub.rule=Host(`sheraos.com.br`) && PathPrefix(`/hub`)
+      - traefik.http.routers.hub.entrypoints=websecure
+      - traefik.http.routers.hub.tls=true
+      - traefik.http.routers.hub.tls.certresolver=letsencrypt
+      - traefik.http.routers.hub.priority=100
+      - traefik.http.routers.hub.middlewares=hub-strip
+      - traefik.http.middlewares.hub-strip.stripprefix.prefixes=/hub
+      - traefik.http.services.hub.loadbalancer.server.port=3003
+    networks:
+      - hub-net
+
+volumes:
+  hub-data:
+
+networks:
+  hub-net:
+    name: hub-net
+    driver: bridge
