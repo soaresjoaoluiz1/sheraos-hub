@@ -18,7 +18,7 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 20 }}>
-          <img src="/hub/logo-dros.png" alt="Dros" style={{ height: 140, marginBottom: 20 }} />
+          <img src="/hub/logo-dros.png" alt="Dros" style={{ height: 70, marginBottom: 18 }} />
           <h1 style={{ margin: 0 }}>Sheraos Hub</h1>
           <div className="subtitle" style={{ marginTop: 4 }}>Gestao de Projetos & Aprovacoes</div>
         </div>
