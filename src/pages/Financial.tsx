@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import {
   fetchFinancialOverview, fetchFinancialDashboard, recordPayment, fetchExpenses, fetchExpenseCategories,
-  createExpense, deleteExpense, copyRecurringExpenses, fetchDRE, formatBRL,
+  createExpense, updateExpense, deleteExpense, copyRecurringExpenses, fetchDRE, formatBRL,
   fetchInstallments, createInstallment, deleteInstallment,
   fetchExtraRevenue, createExtraRevenue, deleteExtraRevenue, fetchClients,
   type FinancialOverview, type FinancialClient, type MonthlyRevenue, type ExpenseCategory, type ExpensesByCategory, type DRE,
   type Installment, type ExtraRevenue, type Client
 } from '../lib/api'
-import { DollarSign, AlertTriangle, CheckCircle, Clock, Plus, Trash2, TrendingUp, TrendingDown, Copy, CreditCard, Receipt } from 'lucide-react'
+import { DollarSign, AlertTriangle, CheckCircle, Clock, Plus, Trash2, TrendingUp, TrendingDown, Copy, CreditCard, Receipt, Edit3 } from 'lucide-react'
+import BankSelect from '../components/BankSelect'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts'
 
 const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
@@ -37,6 +38,7 @@ export default function Financial() {
   const [payModal, setPayModal] = useState<FinancialClient | null>(null)
   const [payDate, setPayDate] = useState('')
   const [payAmount, setPayAmount] = useState('')
+  const [payBank, setPayBank] = useState('')
   const [saving, setSaving] = useState(false)
   const [sortField, setSortField] = useState<string>('status')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -46,7 +48,8 @@ export default function Financial() {
   const [expByCategory, setExpByCategory] = useState<ExpensesByCategory[]>([])
   const [expTotal, setExpTotal] = useState({ fixed: 0, variable: 0, total: 0 })
   const [showNewExp, setShowNewExp] = useState(false)
-  const [newExp, setNewExp] = useState({ category_id: '', description: '', amount: '', is_recurring: false, paid_at: '' })
+  const [editingExpId, setEditingExpId] = useState<number | null>(null)
+  const [newExp, setNewExp] = useState({ category_id: '', description: '', amount: '', is_recurring: false, paid_at: '', bank: '' })
 
   // DRE state
   const [dre, setDre] = useState<DRE | null>(null)
@@ -54,14 +57,14 @@ export default function Financial() {
   // Parcelas state
   const [installments, setInstallments] = useState<Installment[]>([])
   const [showNewInst, setShowNewInst] = useState(false)
-  const [newInst, setNewInst] = useState({ name: '', total_amount: '', installment_count: '', start_month: '', category_id: '' })
+  const [newInst, setNewInst] = useState({ name: '', total_amount: '', installment_count: '', start_month: '', category_id: '', bank: '' })
 
   // Extras state
   const [extras, setExtras] = useState<ExtraRevenue[]>([])
   const [extrasTotal, setExtrasTotal] = useState(0)
   const [clients, setClients] = useState<Client[]>([])
   const [showNewExtra, setShowNewExtra] = useState(false)
-  const [newExtra, setNewExtra] = useState({ client_id: '', description: '', amount: '', paid_at: '' })
+  const [newExtra, setNewExtra] = useState({ client_id: '', description: '', amount: '', paid_at: '', bank: '' })
 
   const [loading, setLoading] = useState(true)
 
@@ -113,8 +116,8 @@ export default function Financial() {
   const handlePay = async () => {
     if (!payModal || !payDate || !payAmount) return
     setSaving(true)
-    await recordPayment({ client_id: payModal.id, amount: parseFloat(payAmount), reference_month: month, paid_at: payDate })
-    setSaving(false); setPayModal(null); load()
+    await recordPayment({ client_id: payModal.id, amount: parseFloat(payAmount), reference_month: month, paid_at: payDate, bank: payBank || undefined })
+    setSaving(false); setPayModal(null); setPayBank(''); load()
   }
 
   const openPayModal = (c: FinancialClient) => {
@@ -125,8 +128,26 @@ export default function Financial() {
 
   const handleAddExpense = async () => {
     if (!newExp.category_id || !newExp.amount) return
-    await createExpense({ category_id: +newExp.category_id, description: newExp.description, amount: parseFloat(newExp.amount), reference_month: month, is_recurring: newExp.is_recurring, paid_at: newExp.paid_at || undefined })
-    setShowNewExp(false); setNewExp({ category_id: '', description: '', amount: '', is_recurring: false, paid_at: '' }); load()
+    const refMonth = newExp.paid_at ? newExp.paid_at.slice(0, 7) : month
+    if (editingExpId) {
+      await updateExpense(editingExpId, { category_id: +newExp.category_id, description: newExp.description, amount: parseFloat(newExp.amount), paid_at: newExp.paid_at || null, reference_month: refMonth, bank: newExp.bank || null })
+    } else {
+      await createExpense({ category_id: +newExp.category_id, description: newExp.description, amount: parseFloat(newExp.amount), reference_month: refMonth, is_recurring: newExp.is_recurring, paid_at: newExp.paid_at || undefined, bank: newExp.bank || undefined })
+    }
+    setShowNewExp(false); setEditingExpId(null); setNewExp({ category_id: '', description: '', amount: '', is_recurring: false, paid_at: '', bank: '' }); load()
+  }
+
+  const openEditExpense = (e: any) => {
+    setEditingExpId(e.id)
+    setNewExp({
+      category_id: String(e.category_id),
+      description: e.description || '',
+      amount: String(e.amount),
+      is_recurring: e.is_recurring === 1,
+      paid_at: e.paid_at || '',
+      bank: e.bank || '',
+    })
+    setShowNewExp(true)
   }
 
   const handleDeleteExpense = async (id: number) => {
@@ -136,8 +157,8 @@ export default function Financial() {
 
   const handleAddInstallment = async () => {
     if (!newInst.name || !newInst.total_amount || !newInst.installment_count || !newInst.start_month) return
-    await createInstallment({ name: newInst.name, total_amount: parseFloat(newInst.total_amount), installment_count: parseInt(newInst.installment_count), start_month: newInst.start_month, category_id: newInst.category_id ? +newInst.category_id : undefined })
-    setShowNewInst(false); setNewInst({ name: '', total_amount: '', installment_count: '', start_month: '', category_id: '' }); load()
+    await createInstallment({ name: newInst.name, total_amount: parseFloat(newInst.total_amount), installment_count: parseInt(newInst.installment_count), start_month: newInst.start_month, category_id: newInst.category_id ? +newInst.category_id : undefined, bank: newInst.bank || undefined })
+    setShowNewInst(false); setNewInst({ name: '', total_amount: '', installment_count: '', start_month: '', category_id: '', bank: '' }); load()
   }
 
   const handleDeleteInstallment = async (id: number) => {
@@ -147,8 +168,9 @@ export default function Financial() {
 
   const handleAddExtra = async () => {
     if (!newExtra.description || !newExtra.amount) return
-    await createExtraRevenue({ client_id: newExtra.client_id ? +newExtra.client_id : undefined, description: newExtra.description, amount: parseFloat(newExtra.amount), reference_month: month, paid_at: newExtra.paid_at || undefined })
-    setShowNewExtra(false); setNewExtra({ client_id: '', description: '', amount: '', paid_at: '' }); load()
+    const refMonth = newExtra.paid_at ? newExtra.paid_at.slice(0, 7) : month
+    await createExtraRevenue({ client_id: newExtra.client_id ? +newExtra.client_id : undefined, description: newExtra.description, amount: parseFloat(newExtra.amount), reference_month: refMonth, paid_at: newExtra.paid_at || undefined, bank: newExtra.bank || undefined })
+    setShowNewExtra(false); setNewExtra({ client_id: '', description: '', amount: '', paid_at: '', bank: '' }); load()
   }
 
   const handleDeleteExtra = async (id: number) => {
@@ -225,6 +247,12 @@ export default function Financial() {
             <div className="card" style={{ textAlign: 'center', borderColor: 'rgba(52,199,89,0.2)' }}>
               <div style={{ fontSize: 11, color: '#34C759', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Recebido</div>
               <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'var(--font-heading)', color: '#34C759' }}>{formatBRL(s.received)}</div>
+              {(s.received_extra ?? 0) > 0 && (
+                <div style={{ fontSize: 10, color: '#6B6580', marginTop: 6, lineHeight: 1.4 }}>
+                  Mensalidades: {formatBRL(s.received_recurring ?? 0)}<br />
+                  Extras: <span style={{ color: '#34C759' }}>{formatBRL(s.received_extra ?? 0)}</span>
+                </div>
+              )}
             </div>
             <div className="card" style={{ textAlign: 'center', borderColor: 'rgba(251,188,4,0.2)' }}>
               <div style={{ fontSize: 11, color: '#FBBC04', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Pendente</div>
@@ -269,7 +297,7 @@ export default function Financial() {
           <div className="table-card">
             <div style={{ overflowX: 'auto' }}>
               <table className="campaign-table">
-                <thead><tr><SortHead field="name">Cliente</SortHead><SortHead field="monthly_fee" right>Mensalidade</SortHead><SortHead field="payment_day" right>Venc.</SortHead><SortHead field="status">Status</SortHead><SortHead field="days_late" right>Atraso</SortHead><SortHead field="penalty" right>Multa</SortHead><SortHead field="total_due" right>Total</SortHead><th className="right">Pago em</th><th></th></tr></thead>
+                <thead><tr><SortHead field="name">Cliente</SortHead><SortHead field="monthly_fee" right>Mensalidade</SortHead><SortHead field="payment_day" right>Venc.</SortHead><SortHead field="status">Status</SortHead><SortHead field="days_late" right>Atraso</SortHead><SortHead field="penalty" right>Multa</SortHead><SortHead field="total_due" right>Total</SortHead><th className="right">Pago em</th><th>Banco</th><th></th></tr></thead>
                 <tbody>
                   {sortedClients.map(c => (
                     <tr key={c.id} style={{ background: c.status === 'late' ? 'rgba(255,107,107,0.03)' : undefined }}>
@@ -285,6 +313,7 @@ export default function Financial() {
                       <td className="right" style={{ color: c.penalty > 0 ? '#FF6B6B' : '#6B6580' }}>{c.penalty > 0 ? formatBRL(c.penalty) : '-'}</td>
                       <td className="right" style={{ fontWeight: 700, color: c.status === 'late' ? '#FF6B6B' : '#A8A3B8' }}>{formatBRL(c.total_due)}</td>
                       <td className="right" style={{ color: '#6B6580', fontSize: 12 }}>{c.paid_at || '-'}</td>
+                      <td style={{ fontSize: 11, color: '#5DADE2' }}>{c.bank || '-'}</td>
                       <td className="right">{c.status !== 'paid' ? <button className="btn btn-primary btn-sm" onClick={() => openPayModal(c)} style={{ fontSize: 11, padding: '4px 10px' }}>Pagar</button> : <span style={{ fontSize: 11, color: '#34C759' }}>&#10003;</span>}</td>
                     </tr>
                   ))}
@@ -313,7 +342,7 @@ export default function Financial() {
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button className="btn btn-primary btn-sm" onClick={() => { const t = new Date(); setNewExp(p => ({ ...p, paid_at: `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}` })); setShowNewExp(true) }}><Plus size={14} /> Nova Despesa</button>
+          <button className="btn btn-primary btn-sm" onClick={() => { const t = new Date(); setEditingExpId(null); setNewExp({ category_id: '', description: '', amount: '', is_recurring: false, paid_at: `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`, bank: '' }); setShowNewExp(true) }}><Plus size={14} /> Nova Despesa</button>
           <button className="btn btn-secondary btn-sm" onClick={handleCopyRecurring}><Copy size={14} /> Copiar Recorrentes do Mes Anterior</button>
         </div>
 
@@ -337,10 +366,12 @@ export default function Financial() {
                       <span style={{ color: '#A8A3B8' }}>{e.description || '-'}</span>
                       {e.is_recurring === 1 && <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: 'rgba(93,173,226,0.12)', color: '#5DADE2' }}>RECORRENTE</span>}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {e.bank && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(93,173,226,0.10)', color: '#5DADE2', fontWeight: 600 }}>{e.bank}</span>}
                       <span style={{ color: '#6B6580', fontSize: 11 }}>{e.paid_at || '-'}</span>
                       <span style={{ fontWeight: 600 }}>{formatBRL(e.amount)}</span>
-                      <button onClick={() => handleDeleteExpense(e.id)} style={{ background: 'transparent', border: 'none', color: '#6B6580', cursor: 'pointer', padding: 4 }}><Trash2 size={12} /></button>
+                      <button onClick={() => openEditExpense(e)} title="Editar" style={{ background: 'transparent', border: 'none', color: '#6B6580', cursor: 'pointer', padding: 4 }}><Edit3 size={12} /></button>
+                      <button onClick={() => handleDeleteExpense(e.id)} title="Apagar" style={{ background: 'transparent', border: 'none', color: '#6B6580', cursor: 'pointer', padding: 4 }}><Trash2 size={12} /></button>
                     </div>
                   </div>
                 ))}
@@ -403,7 +434,7 @@ export default function Financial() {
         ) : (
           <div className="table-card"><div style={{ overflowX: 'auto' }}>
             <table className="campaign-table">
-              <thead><tr><th>Descricao</th><th>Cliente</th><th className="right">Valor</th><th>Pago em</th><th></th></tr></thead>
+              <thead><tr><th>Descricao</th><th>Cliente</th><th className="right">Valor</th><th>Pago em</th><th>Banco</th><th></th></tr></thead>
               <tbody>
                 {extras.map(e => (
                   <tr key={e.id}>
@@ -411,6 +442,7 @@ export default function Financial() {
                     <td style={{ color: '#9B96B0' }}>{e.client_name || '-'}</td>
                     <td className="right" style={{ fontWeight: 700, color: '#34C759' }}>{formatBRL(e.amount)}</td>
                     <td style={{ color: '#6B6580', fontSize: 12 }}>{e.paid_at || '-'}</td>
+                    <td style={{ fontSize: 11, color: '#5DADE2' }}>{e.bank || '-'}</td>
                     <td className="right"><button onClick={() => handleDeleteExtra(e.id)} style={{ background: 'transparent', border: 'none', color: '#FF6B6B', cursor: 'pointer' }}><Trash2 size={14} /></button></td>
                   </tr>
                 ))}
@@ -495,12 +527,13 @@ export default function Financial() {
 
       {/* Pay Modal */}
       {payModal && (
-        <div className="modal-overlay" onClick={() => setPayModal(null)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setPayModal(null))() }}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
             <h2>Registrar Pagamento</h2>
             <p style={{ color: '#9B96B0', fontSize: 13, marginBottom: 16 }}>{payModal.name} — {formatMonth(month)}</p>
             <div className="form-group"><label>Valor (R$)</label><input className="input" type="number" step="0.01" value={payAmount} onChange={e => setPayAmount(e.target.value)} /></div>
             <div className="form-group"><label>Data do Pagamento</label><input className="input" type="date" value={payDate} onChange={e => setPayDate(e.target.value)} /></div>
+            <div className="form-group"><label>Banco (opcional)</label><BankSelect value={payBank} onChange={setPayBank} /></div>
             {payModal.penalty > 0 && <div style={{ padding: '8px 12px', background: 'rgba(255,107,107,0.08)', borderRadius: 8, fontSize: 12, color: '#FF6B6B', marginBottom: 12 }}><AlertTriangle size={12} /> Multa: {formatBRL(payModal.penalty)} ({payModal.days_late} dias)</div>}
             <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setPayModal(null)}>Cancelar</button><button className="btn btn-primary" onClick={handlePay} disabled={saving}>{saving ? 'Salvando...' : 'Confirmar'}</button></div>
           </div>
@@ -509,7 +542,7 @@ export default function Financial() {
 
       {/* New Installment Modal */}
       {showNewInst && (
-        <div className="modal-overlay" onClick={() => setShowNewInst(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowNewInst(false))() }}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
             <h2>Novo Parcelamento</h2>
             <div className="form-group"><label>Nome</label><input className="input" value={newInst.name} onChange={e => setNewInst(p => ({ ...p, name: e.target.value }))} placeholder="Ex: Camera Sony A7III, Notebook Dell..." /></div>
@@ -527,6 +560,7 @@ export default function Financial() {
                 </select>
               </div>
             </div>
+            <div className="form-group"><label>Banco (opcional)</label><BankSelect value={newInst.bank} onChange={v => setNewInst(p => ({ ...p, bank: v }))} /></div>
             <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNewInst(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleAddInstallment}>Criar Parcelamento</button></div>
           </div>
         </div>
@@ -534,7 +568,7 @@ export default function Financial() {
 
       {/* New Extra Revenue Modal */}
       {showNewExtra && (
-        <div className="modal-overlay" onClick={() => setShowNewExtra(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowNewExtra(false))() }}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
             <h2>Nova Receita Extra — {formatMonth(month)}</h2>
             <div className="form-group"><label>Cliente (opcional)</label>
@@ -548,16 +582,17 @@ export default function Financial() {
               <div className="form-group"><label>Valor (R$)</label><input className="input" type="number" step="0.01" value={newExtra.amount} onChange={e => setNewExtra(p => ({ ...p, amount: e.target.value }))} /></div>
               <div className="form-group"><label>Data Pagamento</label><input className="input" type="date" value={newExtra.paid_at} onChange={e => setNewExtra(p => ({ ...p, paid_at: e.target.value }))} /></div>
             </div>
+            <div className="form-group"><label>Banco (opcional)</label><BankSelect value={newExtra.bank} onChange={v => setNewExtra(p => ({ ...p, bank: v }))} /></div>
             <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNewExtra(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleAddExtra}>Adicionar</button></div>
           </div>
         </div>
       )}
 
-      {/* New Expense Modal */}
+      {/* New / Edit Expense Modal */}
       {showNewExp && (
-        <div className="modal-overlay" onClick={() => setShowNewExp(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => { setShowNewExp(false); setEditingExpId(null) })() }}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
-            <h2>Nova Despesa — {formatMonth(month)}</h2>
+            <h2>{editingExpId ? 'Editar Despesa' : `Nova Despesa — ${formatMonth(month)}`}</h2>
             <div className="form-group"><label>Categoria</label>
               <select className="select" value={newExp.category_id} onChange={e => setNewExp(p => ({ ...p, category_id: e.target.value }))}>
                 <option value="">Selecione</option>
@@ -569,11 +604,17 @@ export default function Financial() {
               <div className="form-group"><label>Valor (R$)</label><input className="input" type="number" step="0.01" value={newExp.amount} onChange={e => setNewExp(p => ({ ...p, amount: e.target.value }))} /></div>
               <div className="form-group"><label>Data do Pagamento</label><input className="input" type="date" value={newExp.paid_at} onChange={e => setNewExp(p => ({ ...p, paid_at: e.target.value }))} /></div>
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#A8A3B8', cursor: 'pointer', marginBottom: 16 }}>
-              <input type="checkbox" checked={newExp.is_recurring} onChange={e => setNewExp(p => ({ ...p, is_recurring: e.target.checked }))} />
-              Despesa recorrente (copiar automaticamente pro proximo mes)
-            </label>
-            <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNewExp(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleAddExpense}>Adicionar</button></div>
+            <div className="form-group"><label>Banco (opcional)</label><BankSelect value={newExp.bank} onChange={v => setNewExp(p => ({ ...p, bank: v }))} /></div>
+            {!editingExpId && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#A8A3B8', cursor: 'pointer', marginBottom: 16 }}>
+                <input type="checkbox" checked={newExp.is_recurring} onChange={e => setNewExp(p => ({ ...p, is_recurring: e.target.checked }))} />
+                Despesa recorrente (copiar automaticamente pro proximo mes)
+              </label>
+            )}
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => { setShowNewExp(false); setEditingExpId(null) }}>Cancelar</button>
+              <button className="btn btn-primary" onClick={handleAddExpense}>{editingExpId ? 'Salvar' : 'Adicionar'}</button>
+            </div>
           </div>
         </div>
       )}

@@ -1,9 +1,45 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchClient, updateClient, fetchClientCredentials, createClientCredential, updateClientCredential, deleteClientCredential, fetchClientOnboard, fetchServices, fetchClientServices, updateClientServices, apiFetch, type Client, type ClientCredential, type User as UserT, type Service, type ClientService } from '../lib/api'
-import { ArrowLeft, Building2, ExternalLink, Plus, Edit3, Save, X, Trash2, Eye, EyeOff, Key, Users, Lock, ClipboardCopy, FileText, CheckCircle, Briefcase } from 'lucide-react'
+import { fetchClient, updateClient, fetchClientCredentials, createClientCredential, updateClientCredential, deleteClientCredential, fetchClientOnboard, fetchServices, fetchClientServices, updateClientServices, apiFetch, generateApprovalToken, revokeApprovalToken, type Client, type ClientCredential, type User as UserT, type Service, type ClientService } from '../lib/api'
+import { ArrowLeft, Building2, ExternalLink, Plus, Edit3, Save, X, Trash2, Eye, EyeOff, Key, Users, Lock, ClipboardCopy, FileText, CheckCircle, Briefcase, BarChart3 } from 'lucide-react'
+import CoreAccountSelect from '../components/CoreAccountSelect'
+import PerformanceArea from '../components/performance/PerformanceArea'
 
 const PLATFORMS = ['Facebook', 'Instagram', 'Google Ads', 'Google Analytics', 'Google Meu Negocio', 'Meta Business', 'TikTok', 'LinkedIn', 'YouTube', 'Twitter/X', 'Pinterest', 'Kiwify', 'Hotmart', 'RD Station', 'Outro']
+
+function PerformanceTab({ client, onGoToInfo }: { client: any; onGoToInfo: () => void }) {
+  const hasAny = client?.core_meta_account_id || client?.core_ig_page_id || client?.core_gads_customer_id || client?.core_ga4_property_id
+  if (!hasAny) {
+    return (
+      <div className="card" style={{ textAlign: 'center', padding: 40, color: '#9B96B0' }}>
+        <BarChart3 size={36} style={{ marginBottom: 12, opacity: 0.4 }} />
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 6, color: '#F2F0F7' }}>Nenhuma plataforma vinculada</h3>
+        <p style={{ fontSize: 13, marginBottom: 14 }}>
+          Vincule pelo menos uma conta (Meta, Instagram, Google Ads ou GA4) na<br />
+          secao <strong>"Vinculos do Painel de Performance"</strong> dos dados do cliente.
+        </p>
+        <button className="btn btn-secondary btn-sm" onClick={onGoToInfo}>Ir pra Dados</button>
+      </div>
+    )
+  }
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: '#9B96B0', marginBottom: 12 }}>
+        Painel de <strong style={{ color: '#FFB300' }}>{client.core_client_name || client.name}</strong>
+      </div>
+      <PerformanceArea
+        accountIdHint={client.core_meta_account_id || undefined}
+        accountNameHint={client.core_client_name}
+        availablePlatforms={{
+          meta: !!client.core_meta_account_id,
+          ig: !!client.core_ig_page_id,
+          gads: !!client.core_gads_customer_id,
+          ga4: !!client.core_ga4_property_id,
+        }}
+      />
+    </div>
+  )
+}
 
 export default function ClientDetail() {
   const { id } = useParams()
@@ -13,7 +49,7 @@ export default function ClientDetail() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState<any>({})
-  const [activeTab, setActiveTab] = useState<'info' | 'credentials' | 'users' | 'services' | 'onboard'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'credentials' | 'users' | 'services' | 'onboard' | 'performance'>('info')
   const [clientUsers, setClientUsers] = useState<any[]>([])
   const [resetPassId, setResetPassId] = useState<number | null>(null)
   const [newPassword, setNewPassword] = useState('')
@@ -28,6 +64,8 @@ export default function ClientDetail() {
   const [servicesLoaded, setServicesLoaded] = useState(false)
   const [onboardLoading, setOnboardLoading] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [approvalCopied, setApprovalCopied] = useState(false)
+  const [approvalLoading, setApprovalLoading] = useState(false)
 
   const load = async () => {
     if (!id) return
@@ -35,7 +73,20 @@ export default function ClientDetail() {
     try {
       const data = await fetchClient(+id)
       setClient(data.client); setCredentials((data as any).credentials || []); setClientUsers((data as any).users || [])
-      setEditData({ name: data.client.name, contact_name: data.client.contact_name || '', contact_email: data.client.contact_email || '', contact_phone: (data.client as any).contact_phone || '', drive_folder: (data.client as any).drive_folder || '', monthly_fee: (data.client as any).monthly_fee || 0, payment_day: (data.client as any).payment_day || 10 })
+      setEditData({
+        name: data.client.name,
+        contact_name: data.client.contact_name || '',
+        contact_email: data.client.contact_email || '',
+        contact_phone: (data.client as any).contact_phone || '',
+        drive_folder: (data.client as any).drive_folder || '',
+        monthly_fee: (data.client as any).monthly_fee || 0,
+        payment_day: (data.client as any).payment_day || 10,
+        core_client_name: (data.client as any).core_client_name || '',
+        core_meta_account_id: (data.client as any).core_meta_account_id || '',
+        core_ig_page_id: (data.client as any).core_ig_page_id || '',
+        core_gads_customer_id: (data.client as any).core_gads_customer_id || '',
+        core_ga4_property_id: (data.client as any).core_ga4_property_id || '',
+      })
     } catch {} finally { setLoading(false) }
   }
   useEffect(() => { load() }, [id])
@@ -90,6 +141,34 @@ export default function ClientDetail() {
   const onboardLink = client ? `${window.location.origin}${import.meta.env.BASE_URL}onboard/${(client as any).onboard_token}` : ''
   const copyLink = () => { navigator.clipboard.writeText(onboardLink); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000) }
 
+  const approvalToken = (client as any)?.approval_token as string | null
+  const approvalLink = approvalToken ? `${window.location.origin}${import.meta.env.BASE_URL}approvals/${approvalToken}` : ''
+  const copyApprovalLink = () => { navigator.clipboard.writeText(approvalLink); setApprovalCopied(true); setTimeout(() => setApprovalCopied(false), 2000) }
+  const handleGenerateApprovalToken = async () => {
+    if (!id) return
+    setApprovalLoading(true)
+    try {
+      await generateApprovalToken(+id)
+      const data = await fetchClient(+id)
+      setClient(data.client)
+    } catch {} finally { setApprovalLoading(false) }
+  }
+  const handleRevokeApprovalToken = async () => {
+    if (!id) return
+    if (!confirm('Revogar o link? O cliente nao podera mais acessar essa URL.')) return
+    setApprovalLoading(true)
+    try {
+      await revokeApprovalToken(+id)
+      const data = await fetchClient(+id)
+      setClient(data.client)
+    } catch {} finally { setApprovalLoading(false) }
+  }
+  const shareApprovalWhatsApp = () => {
+    const phone = (client as any)?.contact_phone?.replace(/\D/g, '') || ''
+    const text = encodeURIComponent(`Ola ${client?.contact_name || ''}! Aqui esta o link para voce aprovar as tarefas: ${approvalLink}`)
+    window.open(`https://wa.me/${phone}?text=${text}`, '_blank')
+  }
+
   if (loading) return <div className="loading-container"><div className="spinner" /></div>
   if (!client) return <div className="empty-state"><h3>Cliente nao encontrado</h3></div>
 
@@ -106,6 +185,7 @@ export default function ClientDetail() {
           <button className={`btn btn-sm ${activeTab === 'users' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('users')}><Users size={12} /> Usuarios ({clientUsers.length})</button>
           <button className={`btn btn-sm ${activeTab === 'services' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setActiveTab('services'); loadServices() }}><Briefcase size={12} /> Servicos</button>
           <button className={`btn btn-sm ${activeTab === 'onboard' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setActiveTab('onboard'); loadOnboard() }}><FileText size={12} /> Onboard</button>
+          <button className={`btn btn-sm ${activeTab === 'performance' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('performance')}><BarChart3 size={12} /> Performance</button>
         </div>
       </div>
 
@@ -126,6 +206,41 @@ export default function ClientDetail() {
                 {(client as any).monthly_fee > 0 && <div className="lead-info-row"><span className="lead-info-label">Mensalidade</span><span className="lead-info-value" style={{ color: '#FFB300', fontWeight: 600 }}>R$ {((client as any).monthly_fee || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>}
                 {(client as any).payment_day > 0 && <div className="lead-info-row"><span className="lead-info-label">Dia Vencimento</span><span className="lead-info-value">Dia {(client as any).payment_day}</span></div>}
               </div>
+
+              {/* Link de Aprovacao Publica */}
+              <div style={{ marginTop: 20, padding: '14px 16px', background: 'linear-gradient(135deg, rgba(52,199,89,0.06), rgba(52,199,89,0.02))', border: '1px solid rgba(52,199,89,0.2)', borderRadius: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#34C759', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                  🔗 Link de Aprovacao Publica
+                </div>
+                <p style={{ fontSize: 12, color: '#9B96B0', marginBottom: 10 }}>O cliente acessa este link sem login e aprova as tarefas pendentes diretamente.</p>
+                {approvalToken ? (
+                  <>
+                    <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: 8, fontSize: 11, color: '#A8A3B8', wordBreak: 'break-all', fontFamily: 'monospace', marginBottom: 10 }}>
+                      {approvalLink}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button className="btn btn-primary btn-sm" onClick={copyApprovalLink}>
+                        📋 {approvalCopied ? 'Copiado!' : 'Copiar Link'}
+                      </button>
+                      {(client as any).contact_phone && (
+                        <button className="btn btn-secondary btn-sm" style={{ background: '#25D366', color: '#fff', border: 'none' }} onClick={shareApprovalWhatsApp}>
+                          💬 Enviar pelo WhatsApp
+                        </button>
+                      )}
+                      <button className="btn btn-secondary btn-sm" onClick={handleGenerateApprovalToken} disabled={approvalLoading} title="Gera um novo token e revoga o anterior">
+                        🔄 Regenerar Link
+                      </button>
+                      <button className="btn btn-danger btn-sm" onClick={handleRevokeApprovalToken} disabled={approvalLoading}>
+                        ✕ Revogar
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button className="btn btn-primary btn-sm" onClick={handleGenerateApprovalToken} disabled={approvalLoading}>
+                    {approvalLoading ? 'Gerando...' : '+ Gerar Link de Aprovacao'}
+                  </button>
+                )}
+              </div>
             </>
           ) : (
             <>
@@ -141,6 +256,54 @@ export default function ClientDetail() {
               <div className="form-row">
                 <div className="form-group"><label>Mensalidade (R$)</label><input className="input" type="number" step="0.01" value={editData.monthly_fee} onChange={e => setEditData((p: any) => ({ ...p, monthly_fee: parseFloat(e.target.value) || 0 }))} placeholder="0.00" /></div>
                 <div className="form-group"><label>Dia de Vencimento</label><input className="input" type="number" min="1" max="31" value={editData.payment_day} onChange={e => setEditData((p: any) => ({ ...p, payment_day: parseInt(e.target.value) || 10 }))} /></div>
+              </div>
+              <div className="form-group" style={{ gridColumn: '1 / -1', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 16, marginTop: 8 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12, display: 'block' }}>Vinculos do Painel de Performance</label>
+                <small style={{ color: '#9B96B0', fontSize: 11, marginBottom: 14, display: 'block' }}>
+                  Selecione as contas deste cliente em cada plataforma. So aparecera no painel dele.
+                </small>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#9B96B0', display: 'block', marginBottom: 4 }}>Conta Meta Ads</label>
+                    <CoreAccountSelect
+                      source="meta" mode="id"
+                      value={editData.core_meta_account_id || ''}
+                      onChange={v => setEditData((p: any) => ({ ...p, core_meta_account_id: v }))}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#9B96B0', display: 'block', marginBottom: 4 }}>Pagina Facebook / Instagram</label>
+                    <CoreAccountSelect
+                      source="ig" mode="id"
+                      value={editData.core_ig_page_id || ''}
+                      onChange={v => setEditData((p: any) => ({ ...p, core_ig_page_id: v }))}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#9B96B0', display: 'block', marginBottom: 4 }}>Conta Google Ads</label>
+                    <CoreAccountSelect
+                      source="gads" mode="id"
+                      value={editData.core_gads_customer_id || ''}
+                      onChange={v => setEditData((p: any) => ({ ...p, core_gads_customer_id: v }))}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#9B96B0', display: 'block', marginBottom: 4 }}>Property Google Analytics 4</label>
+                    <CoreAccountSelect
+                      source="ga4" mode="id"
+                      value={editData.core_ga4_property_id || ''}
+                      onChange={v => setEditData((p: any) => ({ ...p, core_ga4_property_id: v }))}
+                    />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={{ fontSize: 11, color: '#9B96B0', display: 'block', marginBottom: 4 }}>Nome textual (apelido — usado pra CRM Google Sheets e Kiwify)</label>
+                    <CoreAccountSelect
+                      value={editData.core_client_name || ''}
+                      onChange={v => setEditData((p: any) => ({ ...p, core_client_name: v }))}
+                      placeholder="Ex: ASK Equipamentos, Sameco, Josi..."
+                    />
+                  </div>
+                </div>
               </div>
               <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
                 <button className="btn btn-primary btn-sm" onClick={handleSave}><Save size={12} /> Salvar</button>
@@ -202,7 +365,7 @@ export default function ClientDetail() {
 
           {/* New credential modal */}
           {showNewCred && (
-            <div className="modal-overlay" onClick={() => setShowNewCred(false)}>
+            <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowNewCred(false))() }}>
               <div className="modal" onClick={e => e.stopPropagation()}>
                 <h2>Novo Acesso</h2>
                 <div className="form-group"><label>Plataforma *</label>
@@ -260,7 +423,7 @@ export default function ClientDetail() {
 
           {/* Reset password / Create access modal */}
           {resetPassId && (
-            <div className="modal-overlay" onClick={() => setResetPassId(null)}>
+            <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setResetPassId(null))() }}>
               <div className="modal" onClick={e => e.stopPropagation()}>
                 {resetPassId === -1 ? (
                   <>
@@ -408,6 +571,9 @@ export default function ClientDetail() {
           )}
         </div>
       )}
+
+      {/* Performance tab — embeda /core via iframe com auto-login */}
+      {activeTab === 'performance' && <PerformanceTab client={client} onGoToInfo={() => setActiveTab('info')} />}
     </div>
   )
 }

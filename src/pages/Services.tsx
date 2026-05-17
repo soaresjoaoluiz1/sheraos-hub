@@ -69,7 +69,7 @@ export default function Services() {
       )}
 
       {showNew && (
-        <div className="modal-overlay" onClick={resetForm}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (resetForm)() }}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
             <h2>{editId ? 'Editar Servico' : 'Novo Servico'}</h2>
 

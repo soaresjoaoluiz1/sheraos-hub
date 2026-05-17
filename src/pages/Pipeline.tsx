@@ -2,10 +2,22 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
-import { fetchPipelineTasks, fetchClients, fetchDepartments, fetchUsers, fetchCategories, createTask, createEditorialTask, moveTaskStage, type Task, type PipelineStage, type Client, type Department, type User as UserT, type TaskCategory } from '../lib/api'
-import { Clock, Building2, User, ExternalLink, ChevronDown, ChevronRight, ArrowRight, Search, AlertTriangle, Plus, Layers } from 'lucide-react'
+import { fetchPipelineTasks, fetchClients, fetchDepartments, fetchUsers, fetchCategories, createTask, createEditorialTask, createMaeTask, moveTaskStage, type Task, type PipelineStage, type Client, type Department, type User as UserT, type TaskCategory } from '../lib/api'
+import { Clock, Building2, User, ExternalLink, ChevronDown, ChevronRight, ArrowRight, Search, AlertTriangle, Plus, Layers, X } from 'lucide-react'
+import { useToast } from '../components/Toast'
 
-function timeAgo(d: string) { const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000); if (m < 60) return `${m}m`; const h = Math.floor(m / 60); if (h < 24) return `${h}h`; return `${Math.floor(h / 24)}d` }
+function timeAgo(d: string) {
+  const [datePart, timePartRaw] = d.split(/[ T]/)
+  const [y, mo, da] = datePart.split('-').map(Number)
+  const [h, mi, s] = ((timePartRaw || '00:00:00').split(':').map(Number)) as [number, number, number]
+  const utcMs = Date.UTC(y, (mo || 1) - 1, da || 1, (h || 0) + 3, mi || 0, s || 0)
+  const m = Math.floor((Date.now() - utcMs) / 60000)
+  if (m < 0) return 'agora'
+  if (m < 60) return `${m}m`
+  const hr = Math.floor(m / 60)
+  if (hr < 24) return `${hr}h`
+  return `${Math.floor(hr / 24)}d`
+}
 function todayStr() { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}` }
 function isOverdue(d: string | null) { return d ? d.slice(0, 10) < todayStr() : false }
 function useIsMobile() { const [m, setM] = useState(window.innerWidth <= 640); useEffect(() => { const h = () => setM(window.innerWidth <= 640); window.addEventListener('resize', h); return () => window.removeEventListener('resize', h) }, []); return m }
@@ -14,8 +26,10 @@ const PRIORITY_COLORS: Record<string, string> = { low: '#6B6580', normal: '#5DAD
 
 export default function Pipeline() {
   const { user } = useAuth()
+  const { toast } = useToast()
   const navigate = useNavigate()
   const isMobile = useIsMobile()
+  const [saving, setSaving] = useState(false)
   const [stages, setStages] = useState<PipelineStage[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
@@ -33,9 +47,15 @@ export default function Pipeline() {
   const [categories, setCategories] = useState<TaskCategory[]>([])
   const [showNew, setShowNew] = useState(false)
   const [showNewEditorial, setShowNewEditorial] = useState(false)
+  const [showNewMae, setShowNewMae] = useState(false)
   const [newEditorial, setNewEditorial] = useState({ client_id: '', month_label: '', num_posts: '8', num_videos: '4', due_date: '', category_id: '' })
-  const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link_raw: '', drive_link: '', approval_link: '', approval_text: '', publish_date: '', publish_objective: '', recording_date: '', recording_time: '' })
-  const isDono = user?.role === 'dono' || user?.role === 'gerente'
+  const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
+  const [newMae, setNewMae] = useState({ title: '', client_id: '', description: '', due_date: today, category_id: '', department_id: '', priority: 'normal' })
+  const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: today, priority: 'normal', drive_link_raw: '', drive_link: '', approval_link: '', approval_text: '', publish_date: '', publish_objective: '', recording_date: '', recording_time: '' })
+  const [newTaskIsCarrossel, setNewTaskIsCarrossel] = useState(false)
+  const [newTaskFiles, setNewTaskFiles] = useState<string[]>([''])
+  const isDono = user?.role === 'dono'
+  const isFunc = user?.role === 'funcionario' || user?.role === 'gerente'
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -50,7 +70,7 @@ export default function Pipeline() {
   }, [filterClient, filterDept, isMobile])
 
   useEffect(() => { loadData() }, [loadData])
-  useEffect(() => { if (isDono || user?.role === 'funcionario') { fetchClients().then(setClients).catch(() => {}); fetchDepartments().then(setDepartments).catch(() => {}); fetchUsers().then(u => setUsers(u as any)).catch(() => {}); fetchCategories().then(setCategories).catch(() => {}) } }, [isDono, user?.role])
+  useEffect(() => { if (isDono || isFunc) { fetchClients().then(setClients).catch(() => {}); fetchDepartments().then(setDepartments).catch(() => {}); fetchUsers().then(u => setUsers(u as any)).catch(() => {}); fetchCategories().then(setCategories).catch(() => {}) } }, [isDono, isFunc])
   const [allUsers, setUsers] = useState<UserT[]>([])
 
   useSSE('task:created', useCallback(() => loadData(), [loadData]))
@@ -71,24 +91,58 @@ export default function Pipeline() {
 
   const handleCreateTask = async () => {
     if (!newTask.title || !newTask.client_id) return
-    const recording_datetime = newTask.recording_date ? `${newTask.recording_date}T${newTask.recording_time || '09:00'}` : undefined
-    await createTask({ ...newTask, client_id: +newTask.client_id, category_id: newTask.category_id ? +newTask.category_id : undefined, department_id: newTask.department_id ? +newTask.department_id : undefined, assigned_to: newTask.assigned_to.map(Number), recording_datetime } as any)
-    setShowNew(false); setNewTask({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [], due_date: '', priority: 'normal', drive_link_raw: '', drive_link: '', approval_link: '', approval_text: '', publish_date: '', publish_objective: '', recording_date: '', recording_time: '' }); loadData()
+    setSaving(true)
+    try {
+      const recording_datetime = newTask.recording_date ? `${newTask.recording_date}T${newTask.recording_time || '09:00'}` : undefined
+      const approval_files = newTaskIsCarrossel ? newTaskFiles.filter(s => s && s.trim()) : (newTask.approval_link ? [newTask.approval_link] : [])
+      await createTask({ ...newTask, client_id: +newTask.client_id, category_id: newTask.category_id ? +newTask.category_id : undefined, department_id: newTask.department_id ? +newTask.department_id : undefined, assigned_to: newTask.assigned_to.map(Number), recording_datetime, approval_files } as any)
+      setShowNew(false); setNewTask({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [], due_date: today, priority: 'normal', drive_link_raw: '', drive_link: '', approval_link: '', approval_text: '', publish_date: '', publish_objective: '', recording_date: '', recording_time: '' })
+      setNewTaskIsCarrossel(false); setNewTaskFiles([''])
+      loadData()
+      toast('Tarefa criada com sucesso!')
+    } catch (err: any) { toast(err.message || 'Erro ao criar tarefa', 'error') }
+    finally { setSaving(false) }
+  }
+
+  const handleCreateMae = async () => {
+    if (!newMae.title || !newMae.client_id) return
+    setSaving(true)
+    try {
+      await createMaeTask({
+        client_id: +newMae.client_id,
+        title: newMae.title,
+        description: newMae.description || undefined,
+        due_date: newMae.due_date || undefined,
+        category_id: newMae.category_id ? +newMae.category_id : undefined,
+        department_id: newMae.department_id ? +newMae.department_id : undefined,
+        priority: newMae.priority,
+      })
+      setShowNewMae(false)
+      setNewMae({ title: '', client_id: '', description: '', due_date: today, category_id: '', department_id: '', priority: 'normal' })
+      loadData()
+      toast('Tarefa Mae criada — abra ela e adicione as subtarefas')
+    } catch (err: any) { toast(err.message || 'Erro ao criar tarefa mae', 'error') }
+    finally { setSaving(false) }
   }
 
   const handleCreateEditorial = async () => {
     if (!newEditorial.client_id || !newEditorial.month_label) return
-    await createEditorialTask({
-      client_id: +newEditorial.client_id,
-      month_label: newEditorial.month_label,
-      num_posts: newEditorial.num_posts ? +newEditorial.num_posts : undefined,
-      num_videos: newEditorial.num_videos ? +newEditorial.num_videos : undefined,
-      due_date: newEditorial.due_date || undefined,
-      category_id: newEditorial.category_id ? +newEditorial.category_id : undefined,
-    })
-    setShowNewEditorial(false)
-    setNewEditorial({ client_id: '', month_label: '', num_posts: '8', num_videos: '4', due_date: '', category_id: '' })
-    loadData()
+    setSaving(true)
+    try {
+      await createEditorialTask({
+        client_id: +newEditorial.client_id,
+        month_label: newEditorial.month_label,
+        num_posts: newEditorial.num_posts ? +newEditorial.num_posts : undefined,
+        num_videos: newEditorial.num_videos ? +newEditorial.num_videos : undefined,
+        due_date: newEditorial.due_date || undefined,
+        category_id: newEditorial.category_id ? +newEditorial.category_id : undefined,
+      })
+      setShowNewEditorial(false)
+      setNewEditorial({ client_id: '', month_label: '', num_posts: '8', num_videos: '4', due_date: '', category_id: '' })
+      loadData()
+      toast('Linha Editorial criada com sucesso!')
+    } catch (err: any) { toast(err.message || 'Erro ao criar linha editorial', 'error') }
+    finally { setSaving(false) }
   }
 
   const handleMobileMove = async (taskId: number, stageSlug: string) => {
@@ -140,7 +194,7 @@ export default function Pipeline() {
         )
       })}
       {moveTaskId && (
-        <div className="modal-overlay" onClick={() => setMoveTaskId(null)}><div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setMoveTaskId(null))() }}><div className="modal" onClick={e => e.stopPropagation()}>
           <h2>Mover tarefa</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {stages.map(s => { const current = tasks.find(t => t.id === moveTaskId)?.stage === s.slug; return (
@@ -160,7 +214,8 @@ export default function Pipeline() {
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1>Pipeline</h1>
-          {(isDono || user?.role === 'funcionario') && <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}><Plus size={14} /> Nova Tarefa</button>}
+          {(isDono || isFunc) && <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}><Plus size={14} /> Nova Tarefa</button>}
+          {(isDono || isFunc) && <button className="btn btn-secondary btn-sm" onClick={() => setShowNewMae(true)}><Layers size={14} /> Tarefa Mae</button>}
           {isDono && <button className="btn btn-secondary btn-sm" onClick={() => setShowNewEditorial(true)}><Layers size={14} /> Linha Editorial</button>}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -215,12 +270,13 @@ export default function Pipeline() {
                     const isSubtask = !!(task as any).parent_task_id
                     const isMother = !isSubtask && !!(task as any).task_type && (task as any).task_type !== 'normal'
                     const displayTitle = isSubtask ? task.title.split(' - ')[0] : task.title
+                    const overdue = isOverdue(task.due_date) && task.stage !== 'concluido' && task.stage !== 'rejeitado'
                     return (
                       <div key={task.id} className={`kanban-card ${draggedTask === task.id ? 'dragging' : ''}`}
                         data-subtask={isSubtask ? '1' : undefined}
                         draggable onDragStart={() => setDraggedTask(task.id)} onDragEnd={() => setDraggedTask(null)}
                         onClick={() => navigate(`/tasks/${task.id}`)}
-                        style={{ borderLeft: `3px solid ${stage.color}`, ...(isSubtask ? { background: 'rgba(255,179,0,0.03)' } : isMother ? { background: 'rgba(255,179,0,0.05)' } : {}) }}>
+                        style={{ borderLeft: `3px solid ${overdue ? '#FF6B6B' : stage.color}`, ...(overdue ? { background: 'rgba(255,107,107,0.08)', border: '1px solid rgba(255,107,107,0.2)' } : isSubtask ? { background: 'rgba(255,179,0,0.03)' } : isMother ? { background: 'rgba(255,179,0,0.05)' } : {}) }}>
                         {isMother && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: '#FFB300', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
                             <Layers size={9} /> Tarefa Mae
@@ -294,7 +350,7 @@ export default function Pipeline() {
 
       {/* New task modal */}
       {showNew && (
-        <div className="modal-overlay" onClick={() => setShowNew(false)}><div className="modal" style={{ maxWidth: 550 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowNew(false))() }}><div className="modal" style={{ maxWidth: 550 }} onClick={e => e.stopPropagation()}>
           <h2>Nova Tarefa</h2>
           <div className="form-group"><label>Titulo *</label><input className="input" value={newTask.title} onChange={e => setNewTask(p => ({ ...p, title: e.target.value }))} /></div>
           <div className="form-group"><label>Descricao</label><textarea className="input" rows={2} value={newTask.description} onChange={e => setNewTask(p => ({ ...p, description: e.target.value }))} /></div>
@@ -315,8 +371,38 @@ export default function Pipeline() {
             <div className="form-group"><label>Link Drive (Arquivo Pronto)</label><input className="input" value={newTask.drive_link} onChange={e => setNewTask(p => ({ ...p, drive_link: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
           </div>
           <div style={{ padding: '14px 16px', background: 'rgba(245,166,35,0.04)', border: '1px solid rgba(245,166,35,0.12)', borderRadius: 10, marginBottom: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Conteudo para Aprovacao (opcional)</div>
-            <div className="form-group"><label>Link do arquivo finalizado</label><input className="input" value={newTask.approval_link} onChange={e => setNewTask(p => ({ ...p, approval_link: e.target.value }))} placeholder="Link do Drive com o arquivo pronto pra aprovacao..." /></div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Conteudo para Aprovacao (opcional)</div>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#A8A3B8', cursor: 'pointer' }}>
+                <input type="checkbox" checked={newTaskIsCarrossel} onChange={e => {
+                  const checked = e.target.checked
+                  if (checked) {
+                    setNewTaskIsCarrossel(true)
+                    setNewTaskFiles(newTask.approval_link ? [newTask.approval_link] : [''])
+                  } else {
+                    setNewTaskIsCarrossel(false)
+                    setNewTask(p => ({ ...p, approval_link: newTaskFiles[0] || '' }))
+                  }
+                }} style={{ accentColor: '#FFB300' }} />
+                Carrossel (varios arquivos)
+              </label>
+            </div>
+            {newTaskIsCarrossel ? (
+              <div className="form-group">
+                <label>Arquivos do carrossel</label>
+                {newTaskFiles.map((url, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <span style={{ minWidth: 56, fontSize: 11, color: '#6B6580', fontWeight: 700 }}>Slide {idx + 1}</span>
+                    <input className="input" value={url} placeholder="Link do Drive (publico)" style={{ flex: 1 }} onChange={e => setNewTaskFiles(arr => arr.map((x, i) => i === idx ? e.target.value : x))} />
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setNewTaskFiles(arr => arr.filter((_, i) => i !== idx))} title="Remover" style={{ padding: '6px 10px' }}><X size={12} /></button>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setNewTaskFiles(arr => [...arr, ''])} style={{ marginTop: 4 }}><Plus size={12} /> Adicionar slide</button>
+                <small style={{ fontSize: 11, color: '#6B6580', marginTop: 6, display: 'block' }}>Cada link vira um slide pro cliente ver. Precisam ser publicos no Drive.</small>
+              </div>
+            ) : (
+              <div className="form-group"><label>Link do arquivo finalizado</label><input className="input" value={newTask.approval_link} onChange={e => setNewTask(p => ({ ...p, approval_link: e.target.value }))} placeholder="Link do Drive — compartilhamento: qualquer pessoa com o link" /><small style={{ fontSize: 11, color: '#6B6580', marginTop: 4, display: 'block' }}>O cliente vai ver o video/imagem embutido. Precisa estar publico no Drive.</small></div>
+            )}
             <div className="form-group"><label>Texto / Legenda</label><textarea className="input" rows={3} value={newTask.approval_text} onChange={e => setNewTask(p => ({ ...p, approval_text: e.target.value }))} placeholder="Legenda do post, texto da publicacao, descricao..." /></div>
             <div className="form-row">
               <div className="form-group"><label>Data da Publicacao</label><input className="input" type="date" value={newTask.publish_date} onChange={e => setNewTask(p => ({ ...p, publish_date: e.target.value }))} /></div>
@@ -339,13 +425,13 @@ export default function Pipeline() {
               </div>
             )
           })()}
-          <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNew(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreateTask}>Criar Tarefa</button></div>
+          <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNew(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreateTask} disabled={saving}>{saving ? 'Criando...' : 'Criar Tarefa'}</button></div>
         </div></div>
       )}
 
       {/* New Editorial modal */}
       {showNewEditorial && (
-        <div className="modal-overlay" onClick={() => setShowNewEditorial(false)}><div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowNewEditorial(false))() }}><div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
           <h2><Layers size={18} style={{ marginRight: 8, verticalAlign: 'middle', color: '#FFB300' }} />Nova Linha Editorial</h2>
           <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Cria uma tarefa-mae com 5 subtarefas fixas: Briefing, Aprovacoes e Publicacao.</p>
           <div className="form-row">
@@ -380,7 +466,29 @@ export default function Pipeline() {
             </ul>
             <div style={{ marginTop: 8, fontStyle: 'italic' }}>Quando todas concluirem, a tarefa-mae auto-conclui.</div>
           </div>
-          <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNewEditorial(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreateEditorial} disabled={!newEditorial.client_id || !newEditorial.month_label}>Criar Linha Editorial</button></div>
+          <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNewEditorial(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreateEditorial} disabled={saving || !newEditorial.client_id || !newEditorial.month_label}>{saving ? 'Criando...' : 'Criar Linha Editorial'}</button></div>
+        </div></div>
+      )}
+
+      {/* New Mae generica modal */}
+      {showNewMae && (
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowNewMae(false))() }}><div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+          <h2><Layers size={18} style={{ marginRight: 8, verticalAlign: 'middle', color: '#FFB300' }} />Nova Tarefa Mae</h2>
+          <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Cria uma tarefa-mae vazia. Voce adiciona as subtarefas manualmente depois. Quando todas concluirem, a mae auto-conclui.</p>
+          <div className="form-row">
+            <div className="form-group"><label>Titulo *</label><input className="input" value={newMae.title} onChange={e => setNewMae(p => ({ ...p, title: e.target.value }))} placeholder="Ex: Campanha Black Friday 2026" /></div>
+            <div className="form-group"><label>Cliente *</label><select className="select" value={newMae.client_id} onChange={e => setNewMae(p => ({ ...p, client_id: e.target.value }))}><option value="">Selecione</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+          </div>
+          <div className="form-group"><label>Descricao</label><textarea className="input" rows={3} value={newMae.description} onChange={e => setNewMae(p => ({ ...p, description: e.target.value }))} /></div>
+          <div className="form-row">
+            <div className="form-group"><label>Prazo</label><input className="input" type="date" value={newMae.due_date} onChange={e => setNewMae(p => ({ ...p, due_date: e.target.value }))} /></div>
+            <div className="form-group"><label>Prioridade</label><select className="select" value={newMae.priority} onChange={e => setNewMae(p => ({ ...p, priority: e.target.value }))}><option value="baixa">Baixa</option><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></div>
+          </div>
+          <div className="form-row">
+            <div className="form-group"><label>Departamento</label><select className="select" value={newMae.department_id} onChange={e => setNewMae(p => ({ ...p, department_id: e.target.value }))}><option value="">Nenhum</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+            <div className="form-group"><label>Categoria</label><select className="select" value={newMae.category_id} onChange={e => setNewMae(p => ({ ...p, category_id: e.target.value }))}><option value="">Nenhuma</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+          </div>
+          <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNewMae(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreateMae} disabled={saving || !newMae.title || !newMae.client_id}>{saving ? 'Criando...' : 'Criar Tarefa Mae'}</button></div>
         </div></div>
       )}
     </div>

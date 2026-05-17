@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
 import { fetchInternalApprovals, fetchClientApprovals, approveTask, rejectTask, requestChanges, fetchPendingRequests, approveTaskRequest, rejectTaskRequest, apiFetch, type Task } from '../lib/api'
 import { CheckCircle, XCircle, ExternalLink, Building2, User, Clock, Eye, MessageSquare, RotateCcw } from 'lucide-react'
+import { useToast } from '../components/Toast'
 
 export default function Approvals() {
   const { user } = useAuth()
@@ -19,6 +20,8 @@ export default function Approvals() {
   const [changesId, setChangesId] = useState<number | null>(null)
   const [changesText, setChangesText] = useState('')
   const [activeTab, setActiveTab] = useState<'internal' | 'client' | 'requests'>(isDono ? 'internal' : 'client')
+  const { toast } = useToast()
+  const [saving, setSaving] = useState(false)
 
   const tasks = activeTab === 'internal' ? internalTasks : activeTab === 'client' ? clientTasks : requestTasks
 
@@ -43,20 +46,35 @@ export default function Approvals() {
   useSSE('task:stage_changed', useCallback(() => load(), [load]))
 
   const handleApprove = async (id: number) => {
-    if (activeTab === 'requests') await approveTaskRequest(id)
-    else await approveTask(id)
-    load()
+    setSaving(true)
+    try {
+      if (activeTab === 'requests') await approveTaskRequest(id)
+      else await approveTask(id)
+      load()
+      toast(activeTab === 'requests' ? 'Solicitacao aprovada!' : 'Tarefa aprovada!')
+    } catch (err: any) { toast(err.message || 'Erro ao aprovar', 'error') }
+    finally { setSaving(false) }
   }
   const handleReject = async () => {
     if (!rejectId || !rejectReason) return
-    if (activeTab === 'requests') await rejectTaskRequest(rejectId, rejectReason)
-    else await rejectTask(rejectId, rejectReason)
-    setRejectId(null); setRejectReason(''); load()
+    setSaving(true)
+    try {
+      if (activeTab === 'requests') await rejectTaskRequest(rejectId, rejectReason)
+      else await rejectTask(rejectId, rejectReason)
+      setRejectId(null); setRejectReason(''); load()
+      toast('Tarefa rejeitada')
+    } catch (err: any) { toast(err.message || 'Erro ao rejeitar', 'error') }
+    finally { setSaving(false) }
   }
   const handleRequestChanges = async () => {
     if (!changesId || !changesText.trim()) return
-    await requestChanges(changesId, changesText)
-    setChangesId(null); setChangesText(''); load()
+    setSaving(true)
+    try {
+      await requestChanges(changesId, changesText)
+      setChangesId(null); setChangesText(''); load()
+      toast('Alteracao solicitada! A equipe sera notificada.')
+    } catch (err: any) { toast(err.message || 'Erro ao solicitar alteracao', 'error') }
+    finally { setSaving(false) }
   }
 
   if (loading) return <div className="loading-container"><div className="spinner" /></div>
@@ -98,7 +116,7 @@ export default function Approvals() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
-                  <button className="btn btn-primary btn-sm" onClick={() => handleApprove(t.id)}><CheckCircle size={14} /> Aprovar</button>
+                  <button className="btn btn-primary btn-sm" onClick={() => { if (confirm('Confirma a aprovacao desta tarefa?')) handleApprove(t.id) }} disabled={saving}><CheckCircle size={14} /> Aprovar</button>
                   {isCliente && activeTab !== 'requests' && <button className="btn btn-sm" style={{ background: '#FFB300', color: '#1a1625', border: 'none' }} onClick={() => setChangesId(t.id)}><RotateCcw size={14} /> Solicitar Alteracao</button>}
                   <button className="btn btn-danger btn-sm" onClick={() => setRejectId(t.id)}><XCircle size={14} /> Rejeitar</button>
                 </div>
@@ -125,15 +143,15 @@ export default function Approvals() {
       )}
 
       {rejectId && (
-        <div className="modal-overlay" onClick={() => setRejectId(null)}><div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setRejectId(null))() }}><div className="modal" onClick={e => e.stopPropagation()}>
           <h2>Rejeitar Tarefa</h2>
           <div className="form-group"><label>Motivo *</label><textarea className="input" rows={3} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="O que precisa ser alterado..." /></div>
-          <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setRejectId(null)}>Cancelar</button><button className="btn btn-danger" onClick={handleReject} disabled={!rejectReason.trim()}>Rejeitar</button></div>
+          <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setRejectId(null)}>Cancelar</button><button className="btn btn-danger" onClick={handleReject} disabled={saving || !rejectReason.trim()}>{saving ? 'Rejeitando...' : 'Rejeitar'}</button></div>
         </div></div>
       )}
 
       {changesId && (
-        <div className="modal-overlay" onClick={() => setChangesId(null)}><div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setChangesId(null))() }}><div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
           <h2><RotateCcw size={18} style={{ marginRight: 8, verticalAlign: 'middle', color: '#FFB300' }} />Solicitar Alteracao</h2>
           <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Descreva de forma <strong>clara e objetiva</strong> o que precisa ser alterado. A tarefa voltara pra revisao da equipe com suas instrucoes.</p>
           <div className="form-group">
@@ -144,7 +162,7 @@ export default function Approvals() {
           </div>
           <div className="modal-actions">
             <button className="btn btn-secondary" onClick={() => setChangesId(null)}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleRequestChanges} disabled={!changesText.trim()}>Enviar Solicitacao</button>
+            <button className="btn btn-primary" onClick={handleRequestChanges} disabled={saving || !changesText.trim()}>{saving ? 'Enviando...' : 'Enviar Solicitacao'}</button>
           </div>
         </div></div>
       )}

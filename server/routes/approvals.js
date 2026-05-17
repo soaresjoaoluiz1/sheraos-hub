@@ -49,7 +49,7 @@ router.post('/:id/approve', (req, res) => {
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' })
 
   let newStage
-  if (req.user.role === 'dono' && task.stage === 'aprovacao_interna') {
+  if ((req.user.role === 'dono' || req.user.role === 'gerente') && task.stage === 'aprovacao_interna') {
     newStage = 'aguardando_cliente'
   } else if (req.user.role === 'cliente' && task.stage === 'aguardando_cliente' && task.client_id === req.user.client_id) {
     newStage = 'programar_publicacao'
@@ -101,7 +101,7 @@ router.post('/:id/reject', (req, res) => {
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' })
 
   let newStage
-  if (req.user.role === 'dono' && task.stage === 'aprovacao_interna') {
+  if ((req.user.role === 'dono' || req.user.role === 'gerente') && task.stage === 'aprovacao_interna') {
     newStage = 'em_producao'
   } else if (req.user.role === 'cliente' && task.stage === 'aguardando_cliente' && task.client_id === req.user.client_id) {
     newStage = 'revisao_interna'

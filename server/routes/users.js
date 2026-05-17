@@ -5,7 +5,7 @@ import { requireRole } from '../middleware/auth.js'
 
 const router = Router()
 
-router.get('/', requireRole('dono', 'funcionario'), (req, res) => {
+router.get('/', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
   const { role, client_id, department_id } = req.query
   let sql = `SELECT u.id, u.client_id, u.name, u.email, u.role, u.is_active, u.created_at,
     c.name as client_name FROM users u LEFT JOIN clients c ON u.client_id = c.id WHERE 1=1`
@@ -33,8 +33,21 @@ router.post('/', requireRole('dono', 'gerente'), (req, res) => {
 })
 
 router.put('/:id', requireRole('dono', 'gerente'), (req, res) => {
-  const { name, is_active, password, client_id } = req.body
+  const { name, is_active, password, client_id, role } = req.body
   const sets = []; const params = []
+
+  if (role !== undefined) {
+    const validRoles = ['dono', 'gerente', 'funcionario', 'cliente']
+    if (!validRoles.includes(role)) return res.status(400).json({ error: 'Role invalido' })
+    // Gerente nao pode promover/criar dono nem rebaixar dono existente
+    if (req.user.role === 'gerente') {
+      if (role === 'dono') return res.status(403).json({ error: 'Gerente nao pode promover a dono' })
+      const target = db.prepare('SELECT role FROM users WHERE id = ?').get(req.params.id)
+      if (target?.role === 'dono') return res.status(403).json({ error: 'Gerente nao pode mudar role de dono' })
+    }
+    sets.push('role = ?'); params.push(role)
+  }
+
   if (name !== undefined) { sets.push('name = ?'); params.push(name) }
   if (is_active !== undefined) { sets.push('is_active = ?'); params.push(is_active ? 1 : 0) }
   if (password) { sets.push('password = ?'); params.push(bcrypt.hashSync(password, 10)) }

@@ -3,12 +3,26 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchTasks, fetchClients, fetchDepartments, fetchUsers, fetchCategories, fetchStages,
-  createTask, createTaskRequest, bulkMoveTasks, bulkAssignTasks, formatNumber,
+  createTask, createTaskRequest, createMaeTask, bulkMoveTasks, bulkAssignTasks, formatNumber,
   type Task, type Client, type Department, type User as UserT, type TaskCategory, type PipelineStage,
 } from '../lib/api'
 import { Plus, Clock, Building2, User, ExternalLink, Download, AlertTriangle, CheckSquare, Square, Users, ArrowRight, ArrowUpDown, Filter } from 'lucide-react'
+import { useToast } from '../components/Toast'
 
-function timeAgo(d: string) { const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000); if (m < 60) return `${m}m`; const h = Math.floor(m / 60); if (h < 24) return `${h}h`; return `${Math.floor(h / 24)}d` }
+function timeAgo(d: string) {
+  // DB salva datetime ja em horario de Brasilia (UTC-3) sem marcador de TZ.
+  // Interpretamos manualmente como BRT e convertemos pra UTC pra comparar com Date.now().
+  const [datePart, timePartRaw] = d.split(/[ T]/)
+  const [y, mo, da] = datePart.split('-').map(Number)
+  const [h, mi, s] = ((timePartRaw || '00:00:00').split(':').map(Number)) as [number, number, number]
+  const utcMs = Date.UTC(y, (mo || 1) - 1, da || 1, (h || 0) + 3, mi || 0, s || 0)
+  const m = Math.floor((Date.now() - utcMs) / 60000)
+  if (m < 0) return 'agora'
+  if (m < 60) return `${m}m`
+  const hr = Math.floor(m / 60)
+  if (hr < 24) return `${hr}h`
+  return `${Math.floor(hr / 24)}d`
+}
 function todayStr() { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}` }
 function isOverdue(d: string | null) { return d ? d.slice(0, 10) < todayStr() : false }
 function isDueSoon(d: string | null) {
@@ -27,9 +41,11 @@ const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
 export default function Tasks() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { toast } = useToast()
   const isDono = user?.role === 'dono'
-  const isFunc = user?.role === 'funcionario'
+  const isFunc = user?.role === 'funcionario' || user?.role === 'gerente'
   const isCliente = user?.role === 'cliente'
+  const [saving, setSaving] = useState(false)
   const [tasks, setTasks] = useState<Task[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -55,9 +71,12 @@ export default function Tasks() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   // Modal
   const [showNew, setShowNew] = useState(false)
+  const [showNewMae, setShowNewMae] = useState(false)
   const [showRequest, setShowRequest] = useState(false)
   const [newRequest, setNewRequest] = useState({ title: '', description: '', drive_link_raw: '' })
-  const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link: '' })
+  const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
+  const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: today, priority: 'normal', drive_link: '' })
+  const [newMae, setNewMae] = useState({ title: '', client_id: '', description: '', due_date: today, category_id: '', department_id: '', priority: 'normal' })
   // Bulk
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [showBulkStage, setShowBulkStage] = useState(false)
@@ -98,8 +117,33 @@ export default function Tasks() {
 
   const handleCreate = async () => {
     if (!newTask.title || !newTask.client_id) return
-    await createTask({ ...newTask, client_id: +newTask.client_id, category_id: newTask.category_id ? +newTask.category_id : undefined, department_id: newTask.department_id ? +newTask.department_id : undefined, assigned_to: newTask.assigned_to.map(Number) } as any)
-    setShowNew(false); setNewTask({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link: '' }); loadTasks()
+    setSaving(true)
+    try {
+      await createTask({ ...newTask, client_id: +newTask.client_id, category_id: newTask.category_id ? +newTask.category_id : undefined, department_id: newTask.department_id ? +newTask.department_id : undefined, assigned_to: newTask.assigned_to.map(Number) } as any)
+      setShowNew(false); setNewTask({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: today, priority: 'normal', drive_link: '' }); loadTasks()
+      toast('Tarefa criada com sucesso!')
+    } catch (err: any) { toast(err.message || 'Erro ao criar tarefa', 'error') }
+    finally { setSaving(false) }
+  }
+
+  const handleCreateMae = async () => {
+    if (!newMae.title || !newMae.client_id) return
+    setSaving(true)
+    try {
+      await createMaeTask({
+        client_id: +newMae.client_id, title: newMae.title,
+        description: newMae.description || undefined,
+        due_date: newMae.due_date || undefined,
+        category_id: newMae.category_id ? +newMae.category_id : undefined,
+        department_id: newMae.department_id ? +newMae.department_id : undefined,
+        priority: newMae.priority,
+      })
+      setShowNewMae(false)
+      setNewMae({ title: '', client_id: '', description: '', due_date: today, category_id: '', department_id: '', priority: 'normal' })
+      loadTasks()
+      toast('Tarefa Mae criada — abra ela e adicione as subtarefas')
+    } catch (err: any) { toast(err.message || 'Erro ao criar tarefa mae', 'error') }
+    finally { setSaving(false) }
   }
 
   const toggleSort = (field: string) => {
@@ -139,6 +183,7 @@ export default function Tasks() {
         <div className="page-header-actions">
           {isDono && <button className="btn btn-secondary btn-sm" onClick={handleExport}><Download size={14} /> Exportar</button>}
           {(isDono || isFunc) && <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}><Plus size={14} /> Nova Tarefa</button>}
+          {(isDono || isFunc) && <button className="btn btn-secondary btn-sm" onClick={() => setShowNewMae(true)}><Plus size={14} /> Tarefa Mae</button>}
           {isCliente && <button className="btn btn-primary btn-sm" onClick={() => setShowRequest(true)}><Plus size={14} /> Nova Solicitacao</button>}
         </div>
       </div>
@@ -251,16 +296,19 @@ export default function Tasks() {
                   </tr>
                 )
               })}
-              {tasks.length === 0 && <tr><td colSpan={isDono ? 8 : isCliente ? 4 : 7} style={{ textAlign: 'center', padding: 40, color: '#6B6580' }}>Nenhuma tarefa encontrada</td></tr>}
+              {tasks.length === 0 && <tr><td colSpan={isDono ? 8 : isCliente ? 4 : 7} style={{ textAlign: 'center', padding: 40, color: '#6B6580' }}>{(search || filterClient || filterStages.size > 0 || filterAssigned) ? 'Nenhuma tarefa com esses filtros. Tente limpar os filtros.' : 'Nenhuma tarefa encontrada.'}</td></tr>}
             </tbody>
           </table>
-          {total > 30 && <div style={{ padding: 12, display: 'flex', justifyContent: 'center', gap: 8 }}><button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</button><span style={{ fontSize: 12, color: '#A8A3B8', padding: '6px 12px' }}>Pag {page}/{Math.ceil(total / 30)}</span><button className="btn btn-secondary btn-sm" disabled={page >= Math.ceil(total / 30)} onClick={() => setPage(p => p + 1)}>Proxima</button></div>}
+          <div style={{ padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, color: '#6B6580' }}>Mostrando {Math.min(tasks.length, 30)} de {total} tarefas</span>
+            {total > 30 && <><button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</button><span style={{ fontSize: 12, color: '#A8A3B8', padding: '4px 8px' }}>Pag {page}/{Math.ceil(total / 30)}</span><button className="btn btn-secondary btn-sm" disabled={page >= Math.ceil(total / 30)} onClick={() => setPage(p => p + 1)}>Proxima</button></>}
+          </div>
         </div>
       )}
 
       {/* New task modal */}
       {showNew && (
-        <div className="modal-overlay" onClick={() => setShowNew(false)}><div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowNew(false))() }}><div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
           <h2>Nova Tarefa</h2>
           <div className="form-group"><label>Titulo *</label><input className="input" value={newTask.title} onChange={e => setNewTask(p => ({ ...p, title: e.target.value }))} /></div>
           <div className="form-group"><label>Descricao</label><textarea className="input" rows={3} value={newTask.description} onChange={e => setNewTask(p => ({ ...p, description: e.target.value }))} /></div>
@@ -277,13 +325,35 @@ export default function Tasks() {
             <div className="form-group"><label>Prioridade</label><select className="select" value={newTask.priority} onChange={e => setNewTask(p => ({ ...p, priority: e.target.value }))}><option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></div>
           </div>
           <div className="form-group"><label>Link Drive (Arquivo Bruto)</label><input className="input" value={newTask.drive_link} onChange={e => setNewTask(p => ({ ...p, drive_link: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
-          <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNew(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreate}>Criar Tarefa</button></div>
+          <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNew(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreate} disabled={saving}>{saving ? 'Criando...' : 'Criar Tarefa'}</button></div>
+        </div></div>
+      )}
+
+      {/* New Mae generica modal */}
+      {showNewMae && (
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowNewMae(false))() }}><div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+          <h2>Nova Tarefa Mae</h2>
+          <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Cria uma tarefa-mae vazia. Voce adiciona as subtarefas manualmente depois. Quando todas concluirem, a mae auto-conclui.</p>
+          <div className="form-row">
+            <div className="form-group"><label>Titulo *</label><input className="input" value={newMae.title} onChange={e => setNewMae(p => ({ ...p, title: e.target.value }))} placeholder="Ex: Campanha Black Friday 2026" /></div>
+            <div className="form-group"><label>Cliente *</label><select className="select" value={newMae.client_id} onChange={e => setNewMae(p => ({ ...p, client_id: e.target.value }))}><option value="">Selecione</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+          </div>
+          <div className="form-group"><label>Descricao</label><textarea className="input" rows={3} value={newMae.description} onChange={e => setNewMae(p => ({ ...p, description: e.target.value }))} /></div>
+          <div className="form-row">
+            <div className="form-group"><label>Prazo</label><input className="input" type="date" value={newMae.due_date} onChange={e => setNewMae(p => ({ ...p, due_date: e.target.value }))} /></div>
+            <div className="form-group"><label>Prioridade</label><select className="select" value={newMae.priority} onChange={e => setNewMae(p => ({ ...p, priority: e.target.value }))}><option value="baixa">Baixa</option><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></div>
+          </div>
+          <div className="form-row">
+            <div className="form-group"><label>Departamento</label><select className="select" value={newMae.department_id} onChange={e => setNewMae(p => ({ ...p, department_id: e.target.value }))}><option value="">Nenhum</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+            <div className="form-group"><label>Categoria</label><select className="select" value={newMae.category_id} onChange={e => setNewMae(p => ({ ...p, category_id: e.target.value }))}><option value="">Nenhuma</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+          </div>
+          <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNewMae(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreateMae} disabled={saving || !newMae.title || !newMae.client_id}>{saving ? 'Criando...' : 'Criar Tarefa Mae'}</button></div>
         </div></div>
       )}
 
       {/* Client request modal */}
       {showRequest && (
-        <div className="modal-overlay" onClick={() => setShowRequest(false)}><div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowRequest(false))() }}><div className="modal" onClick={e => e.stopPropagation()}>
           <h2>Nova Solicitacao</h2>
           <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Sua solicitacao sera enviada para aprovacao da equipe. Apos aprovada, entrara em producao.</p>
           <div className="form-group"><label>Titulo *</label><input className="input" value={newRequest.title} onChange={e => setNewRequest(p => ({ ...p, title: e.target.value }))} placeholder="Ex: Mudar bio do perfil..." /></div>
@@ -291,14 +361,14 @@ export default function Tasks() {
           <div className="form-group"><label>Link dos arquivos (opcional)</label><input className="input" value={newRequest.drive_link_raw} onChange={e => setNewRequest(p => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/... ou outro" /></div>
           <div className="modal-actions">
             <button className="btn btn-secondary" onClick={() => setShowRequest(false)}>Cancelar</button>
-            <button className="btn btn-primary" disabled={!newRequest.title} onClick={async () => { await createTaskRequest({ title: newRequest.title, description: newRequest.description, drive_link_raw: newRequest.drive_link_raw || undefined }); setShowRequest(false); setNewRequest({ title: '', description: '', drive_link_raw: '' }); loadTasks() }}>Enviar Solicitacao</button>
+            <button className="btn btn-primary" disabled={saving || !newRequest.title} onClick={async () => { setSaving(true); try { await createTaskRequest({ title: newRequest.title, description: newRequest.description, drive_link_raw: newRequest.drive_link_raw || undefined }); setShowRequest(false); setNewRequest({ title: '', description: '', drive_link_raw: '' }); loadTasks(); toast('Solicitacao enviada!') } catch (err: any) { toast(err.message || 'Erro ao enviar', 'error') } finally { setSaving(false) } }}>{saving ? 'Enviando...' : 'Enviar Solicitacao'}</button>
           </div>
         </div></div>
       )}
 
       {/* Bulk stage modal */}
       {showBulkStage && (
-        <div className="modal-overlay" onClick={() => setShowBulkStage(false)}><div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowBulkStage(false))() }}><div className="modal" onClick={e => e.stopPropagation()}>
           <h2>Mover {selected.size} tarefas</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{stages.map(s => <button key={s.id} className="btn btn-secondary" onClick={() => handleBulkStage(s.slug)} style={{ justifyContent: 'flex-start' }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: s.color }} />{s.name}</button>)}</div>
         </div></div>
@@ -306,7 +376,7 @@ export default function Tasks() {
 
       {/* Bulk assign modal */}
       {showBulkAssign && (
-        <div className="modal-overlay" onClick={() => setShowBulkAssign(false)}><div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowBulkAssign(false))() }}><div className="modal" onClick={e => e.stopPropagation()}>
           <h2>Atribuir {selected.size} tarefas</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <button className="btn btn-secondary" onClick={() => handleBulkAssign(null)} style={{ justifyContent: 'flex-start' }}>Remover responsavel</button>

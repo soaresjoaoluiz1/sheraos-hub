@@ -8,6 +8,7 @@ import Pipeline from './pages/Pipeline'
 import Tasks from './pages/Tasks'
 import TaskDetail from './pages/TaskDetail'
 import Approvals from './pages/Approvals'
+import Performance from './pages/Performance'
 import Clients from './pages/Clients'
 import ClientDetail from './pages/ClientDetail'
 import Team from './pages/Team'
@@ -19,7 +20,9 @@ import Services from './pages/Services'
 import Financial from './pages/Financial'
 import Gravacoes from './pages/Gravacoes'
 import Onboard from './pages/Onboard'
+import PublicApprovals from './pages/PublicApprovals'
 import TimerCheck from './components/TimerCheck'
+import { ToastProvider } from './components/Toast'
 
 function AppRoutes() {
   const { user, loading } = useAuth()
@@ -27,9 +30,10 @@ function AppRoutes() {
   if (!user) return <Routes><Route path="*" element={<Login />} /></Routes>
 
   const isDono = user.role === 'dono'
+  const isGerente = user.role === 'gerente'
   const isFunc = user.role === 'funcionario'
   const isCliente = user.role === 'cliente'
-  const home = isDono ? '/dashboard' : isFunc ? '/pipeline' : '/approvals'
+  const home = (isDono || isGerente) ? '/dashboard' : isFunc ? '/pipeline' : '/approvals'
 
   return (
     <SSEProvider>
@@ -44,16 +48,19 @@ function AppRoutes() {
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/tasks/:id" element={<TaskDetail />} />
-            {(isDono || isFunc) && <Route path="/pipeline" element={<Pipeline />} />}
-            {(isDono || isFunc) && <Route path="/gravacoes" element={<Gravacoes />} />}
-            {(isDono || isCliente) && <Route path="/approvals" element={<Approvals />} />}
-            {isDono && <>
+            {(isDono || isGerente || isFunc) && <Route path="/pipeline" element={<Pipeline />} />}
+            {(isDono || isGerente || isFunc) && <Route path="/gravacoes" element={<Gravacoes />} />}
+            {(isDono || isGerente || isCliente) && <Route path="/approvals" element={<Approvals />} />}
+            {isCliente && <Route path="/performance" element={<Performance />} />}
+            {(isDono || isGerente) && <>
               <Route path="/clients" element={<Clients />} />
               <Route path="/clients/:id" element={<ClientDetail />} />
               <Route path="/team" element={<Team />} />
               <Route path="/departments" element={<Departments />} />
               <Route path="/categories" element={<Categories />} />
               <Route path="/services" element={<Services />} />
+            </>}
+            {isDono && <>
               <Route path="/financial" element={<Financial />} />
               <Route path="/settings" element={<SettingsPage />} />
             </>}
@@ -70,7 +77,8 @@ export default function App() {
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/onboard/:token" element={<Onboard />} />
-        <Route path="/*" element={<AuthProvider><AppRoutes /></AuthProvider>} />
+        <Route path="/approvals/:token" element={<PublicApprovals />} />
+        <Route path="/*" element={<AuthProvider><ToastProvider><AppRoutes /></ToastProvider></AuthProvider>} />
       </Routes>
     </BrowserRouter>
   )

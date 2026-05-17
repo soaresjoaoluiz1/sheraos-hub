@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { fetchUsers, fetchClients, fetchDepartments, createUser, updateUserDepartments, deleteUser, type User as UserT, type Client, type Department } from '../lib/api'
-import { UsersRound, Plus, Trash2 } from 'lucide-react'
+import { fetchUsers, fetchClients, fetchDepartments, createUser, updateUser, updateUserDepartments, deleteUser, type User as UserT, type Client, type Department } from '../lib/api'
+import { UsersRound, Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 
 export default function Team() {
   const [users, setUsers] = useState<UserT[]>([])
@@ -21,6 +21,13 @@ export default function Team() {
   }
 
   const handleSaveDepts = async () => { if (editDepts) { await updateUserDepartments(editDepts.userId, editDepts.deptIds); setEditDepts(null); load() } }
+
+  const handleChangeRole = async (u: UserT, newRole: 'gerente' | 'funcionario') => {
+    const action = newRole === 'gerente' ? 'promover a Gerente' : 'rebaixar para Funcionario'
+    if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} ${u.name}?`)) return
+    try { await updateUser(u.id, { role: newRole }); load() }
+    catch (e: any) { alert('Erro: ' + e.message) }
+  }
 
   const funcionarios = users.filter(u => u.role === 'funcionario')
   const clientes = users.filter(u => u.role === 'cliente')
@@ -46,6 +53,7 @@ export default function Team() {
                     <td><span style={{ color: u.is_active ? '#34C759' : '#FF6B6B' }}>{u.is_active ? 'Ativo' : 'Inativo'}</span></td>
                     <td className="right" style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                       <button className="btn btn-secondary btn-sm" onClick={() => setEditDepts({ userId: u.id, deptIds: u.departments?.map(d => d.id) || [] })}>Departamentos</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => handleChangeRole(u, 'funcionario')} title="Rebaixar para Funcionario"><ChevronDown size={12} /> Rebaixar</button>
                       <button className="btn btn-danger btn-sm btn-icon" onClick={() => { if (confirm(`Remover ${u.name}?`)) { deleteUser(u.id).then(load) } }}><Trash2 size={12} /></button>
                     </td>
                   </tr>
@@ -64,6 +72,7 @@ export default function Team() {
                   <td><span style={{ color: u.is_active ? '#34C759' : '#FF6B6B' }}>{u.is_active ? 'Ativo' : 'Inativo'}</span></td>
                   <td className="right" style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                     <button className="btn btn-secondary btn-sm" onClick={() => setEditDepts({ userId: u.id, deptIds: u.departments?.map(d => d.id) || [] })}>Departamentos</button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => handleChangeRole(u, 'gerente')} title="Promover a Gerente" style={{ color: '#FFB300' }}><ChevronUp size={12} /> Promover</button>
                     <button className="btn btn-danger btn-sm btn-icon" onClick={() => { if (confirm(`Remover ${u.name}?`)) { deleteUser(u.id).then(load) } }}><Trash2 size={12} /></button>
                   </td>
                 </tr>

@@ -42,7 +42,7 @@ export default function Departments() {
         </table></div>
       )}
       {showNew && (
-        <div className="modal-overlay" onClick={() => setShowNew(false)}><div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowNew(false))() }}><div className="modal" onClick={e => e.stopPropagation()}>
           <h2>Novo Departamento</h2>
           <div className="form-row"><div className="form-group" style={{ flex: 3 }}><label>Nome</label><input className="input" value={newName} onChange={e => setNewName(e.target.value)} /></div><div className="form-group" style={{ flex: 1 }}><label>Cor</label><input type="color" value={newColor} onChange={e => setNewColor(e.target.value)} style={{ width: '100%', height: 40, border: 'none', borderRadius: 8, cursor: 'pointer' }} /></div></div>
           <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNew(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreate}>Criar</button></div>

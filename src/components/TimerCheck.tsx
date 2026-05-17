@@ -12,7 +12,7 @@ export default function TimerCheck() {
     setPopup({ taskId: data.taskId, taskTitle: data.taskTitle, elapsed: data.elapsed })
     // Also try to show browser notification
     if (Notification.permission === 'granted') {
-      new Notification('Ainda esta produzindo?', { body: `Timer ativo: ${data.taskTitle}`, icon: '/hub/logo-dros.png' })
+      new Notification('Ainda esta produzindo?', { body: `Timer ativo: ${data.taskTitle}`, icon: '/hub/icon.png' })
     }
   }, []))
 

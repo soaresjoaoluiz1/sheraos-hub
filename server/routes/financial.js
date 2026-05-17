@@ -12,7 +12,8 @@ router.get('/overview', (req, res) => {
   const month = req.query.month
   if (!month || !/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'month param required (YYYY-MM)' })
 
-  const clients = db.prepare('SELECT id, name, monthly_fee, payment_day FROM clients WHERE is_active = 1 ORDER BY name').all()
+  // Lista todos: ativos sempre, inativos so ate a data de inativacao
+  const clients = db.prepare('SELECT id, name, monthly_fee, payment_day, is_active, inactivated_at FROM clients ORDER BY name').all()
 
   // Get all payments for this month
   const payments = db.prepare('SELECT * FROM payments WHERE reference_month = ?').all(month)
@@ -34,29 +35,40 @@ router.get('/overview', (req, res) => {
   let totalLate = 0
   let lateCount = 0
 
+  // Pra inativos: extrai mes da inativacao (YYYY-MM) — meses depois disso nao aparecem
+  const monthKey = `${reqYear}-${String(reqMonth).padStart(2, '0')}`
+
   const result = clients.map(c => {
     const fee = c.monthly_fee || 0
-    totalExpected += fee
-
     const payment = paymentMap[c.id]
+
+    // Pagamento registrado: sempre mostra (historico, mesmo inativo)
     if (payment) {
+      totalExpected += fee
       totalReceived += payment.amount
       return {
         id: c.id, name: c.name, monthly_fee: fee, payment_day: c.payment_day || 10,
         status: 'paid', paid_at: payment.paid_at, amount_paid: payment.amount,
-        days_late: 0, penalty: 0, total_due: fee
+        days_late: 0, penalty: 0, total_due: fee, is_active: c.is_active,
+        bank: payment.bank || null
       }
+    }
+
+    // Cliente inativo sem pagamento: so mostra ate o mes da inativacao
+    if (!c.is_active) {
+      if (!c.inactivated_at) return null
+      const inactivatedMonth = String(c.inactivated_at).slice(0, 7) // 'YYYY-MM'
+      if (monthKey > inactivatedMonth) return null // mes posterior a saida — some
     }
 
     // No payment - check if late
     const payDay = c.payment_day || 10
-    // Payment is late if: requested month is in the past, OR it's current month and payment_day has passed
     const isCurrentMonth = reqYear === currentYear && reqMonth === currentMonth
     const isPastMonth = reqYear < currentYear || (reqYear === currentYear && reqMonth < currentMonth)
     const isLate = isPastMonth || (isCurrentMonth && currentDay > payDay)
 
     if (isLate && fee > 0) {
-      // Calculate days late — 2% fixed penalty + 1% per 30 days after
+      totalExpected += fee
       const dueDate = new Date(reqYear, reqMonth - 1, payDay)
       const diffMs = spNow.getTime() - dueDate.getTime()
       const daysLate = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
@@ -68,24 +80,31 @@ router.get('/overview', (req, res) => {
       return {
         id: c.id, name: c.name, monthly_fee: fee, payment_day: payDay,
         status: 'late', paid_at: null, amount_paid: 0,
-        days_late: daysLate, penalty, total_due: totalDue
+        days_late: daysLate, penalty, total_due: totalDue, is_active: c.is_active
       }
     }
 
-    // Pending (not yet due)
+    // Pending (not yet due) — clientes inativos nao geram divida pendente futura
+    if (!c.is_active) return null
+    totalExpected += fee
     totalPending += fee
     return {
       id: c.id, name: c.name, monthly_fee: fee, payment_day: payDay,
       status: 'pending', paid_at: null, amount_paid: 0,
-      days_late: 0, penalty: 0, total_due: fee
+      days_late: 0, penalty: 0, total_due: fee, is_active: c.is_active
     }
-  })
+  }).filter(Boolean)
+
+  // Receitas extras do mes (servicos avulsos, vendas pontuais, etc)
+  const extraSum = db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM extra_revenue WHERE reference_month = ?').get(month).total || 0
 
   res.json({
     clients: result,
     summary: {
-      expected: totalExpected,
-      received: totalReceived,
+      expected: totalExpected, // apenas mensalidades (recorrente)
+      received: totalReceived + extraSum, // mensalidades pagas + extras
+      received_recurring: totalReceived,
+      received_extra: extraSum,
       pending: totalPending,
       late: totalLate,
       lateCount
@@ -95,7 +114,7 @@ router.get('/overview', (req, res) => {
 
 // POST /api/financial/payments
 router.post('/payments', (req, res) => {
-  const { client_id, amount, reference_month, paid_at } = req.body
+  const { client_id, amount, reference_month, paid_at, bank } = req.body
   if (!client_id || amount === undefined || !reference_month || !paid_at) {
     return res.status(400).json({ error: 'client_id, amount, reference_month e paid_at obrigatorios' })
   }
@@ -103,15 +122,13 @@ router.post('/payments', (req, res) => {
     return res.status(400).json({ error: 'reference_month deve ser YYYY-MM' })
   }
 
-  // Check for duplicate
   const existing = db.prepare('SELECT id FROM payments WHERE client_id = ? AND reference_month = ?').get(client_id, reference_month)
   if (existing) {
-    // Update existing payment
-    db.prepare("UPDATE payments SET amount = ?, paid_at = ?, created_at = datetime('now', '-3 hours') WHERE id = ?").run(amount, paid_at, existing.id)
+    db.prepare("UPDATE payments SET amount = ?, paid_at = ?, bank = ?, created_at = datetime('now', '-3 hours') WHERE id = ?").run(amount, paid_at, bank || null, existing.id)
     return res.json({ payment: db.prepare('SELECT * FROM payments WHERE id = ?').get(existing.id) })
   }
 
-  const result = db.prepare('INSERT INTO payments (client_id, amount, reference_month, paid_at) VALUES (?, ?, ?, ?)').run(client_id, amount, reference_month, paid_at)
+  const result = db.prepare('INSERT INTO payments (client_id, amount, reference_month, paid_at, bank) VALUES (?, ?, ?, ?, ?)').run(client_id, amount, reference_month, paid_at, bank || null)
   res.json({ payment: db.prepare('SELECT * FROM payments WHERE id = ?').get(result.lastInsertRowid) })
 })
 
@@ -174,20 +191,22 @@ router.get('/expenses', (req, res) => {
 
 // POST expense
 router.post('/expenses', (req, res) => {
-  const { category_id, description, amount, reference_month, paid_at, is_recurring } = req.body
+  const { category_id, description, amount, reference_month, paid_at, is_recurring, bank } = req.body
   if (!category_id || !amount || !reference_month) return res.status(400).json({ error: 'category_id, amount, reference_month obrigatorios' })
-  const result = db.prepare('INSERT INTO expenses (category_id, description, amount, reference_month, paid_at, is_recurring) VALUES (?, ?, ?, ?, ?, ?)').run(category_id, description || null, amount, reference_month, paid_at || null, is_recurring ? 1 : 0)
+  const result = db.prepare('INSERT INTO expenses (category_id, description, amount, reference_month, paid_at, is_recurring, bank) VALUES (?, ?, ?, ?, ?, ?, ?)').run(category_id, description || null, amount, reference_month, paid_at || null, is_recurring ? 1 : 0, bank || null)
   res.json({ expense: db.prepare('SELECT * FROM expenses WHERE id = ?').get(result.lastInsertRowid) })
 })
 
 // PUT expense
 router.put('/expenses/:id', (req, res) => {
-  const { category_id, description, amount, paid_at } = req.body
+  const { category_id, description, amount, paid_at, bank, reference_month } = req.body
   const sets = []; const params = []
   if (category_id !== undefined) { sets.push('category_id = ?'); params.push(category_id) }
   if (description !== undefined) { sets.push('description = ?'); params.push(description) }
   if (amount !== undefined) { sets.push('amount = ?'); params.push(amount) }
   if (paid_at !== undefined) { sets.push('paid_at = ?'); params.push(paid_at) }
+  if (bank !== undefined) { sets.push('bank = ?'); params.push(bank || null) }
+  if (reference_month !== undefined) { sets.push('reference_month = ?'); params.push(reference_month) }
   if (!sets.length) return res.status(400).json({ error: 'Nada pra atualizar' })
   params.push(req.params.id)
   db.prepare(`UPDATE expenses SET ${sets.join(', ')} WHERE id = ?`).run(...params)
@@ -222,20 +241,20 @@ router.get('/installments', (req, res) => {
 })
 
 router.post('/installments', (req, res) => {
-  const { name, total_amount, installment_count, start_month, category_id } = req.body
+  const { name, total_amount, installment_count, start_month, category_id, bank } = req.body
   if (!name || !total_amount || !installment_count || !start_month) return res.status(400).json({ error: 'Campos obrigatorios' })
   const installment_amount = Math.round((total_amount / installment_count) * 100) / 100
-  const result = db.prepare('INSERT INTO installments (name, total_amount, installment_count, installment_amount, start_month, category_id) VALUES (?, ?, ?, ?, ?, ?)').run(name, total_amount, installment_count, installment_amount, start_month, category_id || null)
+  const result = db.prepare('INSERT INTO installments (name, total_amount, installment_count, installment_amount, start_month, category_id, bank) VALUES (?, ?, ?, ?, ?, ?, ?)').run(name, total_amount, installment_count, installment_amount, start_month, category_id || null, bank || null)
 
-  // Auto-create expenses for each month
+  // Auto-create expenses for each month (propaga banco)
   const catId = category_id || db.prepare("SELECT id FROM expense_categories WHERE name LIKE '%Emprestimo%' OR name LIKE '%Parcela%' LIMIT 1").get()?.id
   if (catId) {
     const [y, m] = start_month.split('-').map(Number)
-    const stmt = db.prepare('INSERT INTO expenses (category_id, description, amount, reference_month, is_recurring, paid_at) VALUES (?, ?, ?, ?, 0, ?)')
+    const stmt = db.prepare('INSERT INTO expenses (category_id, description, amount, reference_month, is_recurring, paid_at, bank) VALUES (?, ?, ?, ?, 0, ?, ?)')
     for (let i = 0; i < installment_count; i++) {
       const date = new Date(y, m - 1 + i, 1)
       const monthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-      stmt.run(catId, `${name} (${i + 1}/${installment_count})`, installment_amount, monthStr, null)
+      stmt.run(catId, `${name} (${i + 1}/${installment_count})`, installment_amount, monthStr, null, bank || null)
     }
   }
 
@@ -264,9 +283,9 @@ router.get('/extra-revenue', (req, res) => {
 })
 
 router.post('/extra-revenue', (req, res) => {
-  const { client_id, description, amount, reference_month, paid_at } = req.body
+  const { client_id, description, amount, reference_month, paid_at, bank } = req.body
   if (!description || !amount || !reference_month) return res.status(400).json({ error: 'description, amount, reference_month obrigatorios' })
-  const result = db.prepare('INSERT INTO extra_revenue (client_id, description, amount, reference_month, paid_at) VALUES (?, ?, ?, ?, ?)').run(client_id || null, description, amount, reference_month, paid_at || null)
+  const result = db.prepare('INSERT INTO extra_revenue (client_id, description, amount, reference_month, paid_at, bank) VALUES (?, ?, ?, ?, ?, ?)').run(client_id || null, description, amount, reference_month, paid_at || null, bank || null)
   res.json({ item: db.prepare('SELECT * FROM extra_revenue WHERE id = ?').get(result.lastInsertRowid) })
 })
 

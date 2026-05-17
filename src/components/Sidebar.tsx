@@ -5,7 +5,7 @@ import { useSSE } from '../context/SSEContext'
 import { apiFetch } from '../lib/api'
 import {
   LayoutDashboard, Kanban, ListTodo, CheckCircle, Building2, UsersRound,
-  Layers, Tag, Briefcase, DollarSign, Settings, LogOut, Menu, X, ChevronsLeft, ChevronsRight, Video,
+  Layers, Tag, Briefcase, DollarSign, Settings, LogOut, Menu, X, ChevronsLeft, ChevronsRight, Video, ExternalLink, BarChart3,
 } from 'lucide-react'
 import NotificationBell from './NotificationBell'
 
@@ -17,6 +17,7 @@ export default function Sidebar() {
   if (!user) return null
 
   const isDono = user.role === 'dono'
+  const isGerente = user.role === 'gerente'
   const isFunc = user.role === 'funcionario'
   const isCliente = user.role === 'cliente'
   const close = () => setMobileOpen(false)
@@ -25,14 +26,14 @@ export default function Sidebar() {
   const [overdueCount, setOverdueCount] = useState(0)
 
   useEffect(() => {
-    if (isDono) {
+    if (isDono || isGerente) {
       apiFetch('/api/approvals/internal').then((d: any) => setApprovalCount(d.tasks?.length || 0)).catch(() => {})
       apiFetch('/api/dashboard/stats?days=1').then((d: any) => setOverdueCount(d.overdue || 0)).catch(() => {})
     } else if (isCliente) apiFetch('/api/approvals/client').then((d: any) => setApprovalCount(d.tasks?.length || 0)).catch(() => {})
-  }, [isDono, isCliente])
+  }, [isDono, isGerente, isCliente])
 
   useSSE('task:stage_changed', () => {
-    if (isDono) apiFetch('/api/approvals/internal').then((d: any) => setApprovalCount(d.tasks?.length || 0)).catch(() => {})
+    if (isDono || isGerente) apiFetch('/api/approvals/internal').then((d: any) => setApprovalCount(d.tasks?.length || 0)).catch(() => {})
     else if (isCliente) apiFetch('/api/approvals/client').then((d: any) => setApprovalCount(d.tasks?.length || 0)).catch(() => {})
   })
 
@@ -51,31 +52,36 @@ export default function Sidebar() {
           </div>
         </div>
         <nav className="sidebar-nav">
-          {isDono && <div className="nav-section">Gestao</div>}
+          {(isDono || isGerente) && <div className="nav-section">Gestao</div>}
           <NavLink to="/dashboard" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}>
             <LayoutDashboard size={16} /> Dashboard
           </NavLink>
-          {(isDono || isFunc) && (
+          {(isDono || isGerente || isFunc) && (
             <NavLink to="/pipeline" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}>
               <Kanban size={16} /> Pipeline
             </NavLink>
           )}
-          {(isDono || isFunc) && (
+          {(isDono || isGerente || isFunc) && (
             <NavLink to="/gravacoes" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}>
               <Video size={16} /> Gravacoes
             </NavLink>
           )}
           <NavLink to="/tasks" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}>
             <ListTodo size={16} /> {isCliente ? 'Minhas Tarefas' : 'Tarefas'}
-            {overdueCount > 0 && isDono && <span className="nav-badge" style={{ background: '#FF6B6B' }}>{overdueCount}</span>}
+            {overdueCount > 0 && (isDono || isGerente) && <span className="nav-badge" style={{ background: '#FF6B6B' }}>{overdueCount}</span>}
           </NavLink>
-          {(isDono || isCliente) && (
+          {(isDono || isGerente || isCliente) && (
             <NavLink to="/approvals" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}>
               <CheckCircle size={16} /> {isCliente ? 'Aprovações' : 'Aprovacoes'}
               {approvalCount > 0 && <span className="nav-badge">{approvalCount}</span>}
             </NavLink>
           )}
-          {isDono && (
+          {isCliente && (
+            <NavLink to="/performance" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}>
+              <BarChart3 size={16} /> Performance
+            </NavLink>
+          )}
+          {(isDono || isGerente) && (
             <>
               <div className="nav-section">Administracao</div>
               <NavLink to="/clients" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}><Building2 size={16} /> Clientes</NavLink>
@@ -83,8 +89,9 @@ export default function Sidebar() {
               <NavLink to="/departments" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}><Layers size={16} /> Departamentos</NavLink>
               <NavLink to="/categories" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}><Tag size={16} /> Categorias</NavLink>
               <NavLink to="/services" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}><Briefcase size={16} /> Servicos</NavLink>
-              <NavLink to="/financial" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}><DollarSign size={16} /> Financeiro</NavLink>
-              <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}><Settings size={16} /> Configuracoes</NavLink>
+              {isDono && <NavLink to="/financial" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}><DollarSign size={16} /> Financeiro</NavLink>}
+              {isDono && <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}><Settings size={16} /> Configuracoes</NavLink>}
+              {isDono && <a href="/crm/" target="_blank" rel="noopener noreferrer" className="nav-item" style={{ textDecoration: 'none' }} onClick={close}><ExternalLink size={16} /> CRM</a>}
             </>
           )}
         </nav>
@@ -93,7 +100,7 @@ export default function Sidebar() {
             <button className="logout-btn" onClick={logout} title="Sair" style={{ margin: '0 auto' }}><LogOut size={16} /></button>
           ) : (
             <>
-              <div><div className="sidebar-user">{user.name}</div><div className="sidebar-role">{user.role === 'dono' ? 'CEO' : user.role === 'funcionario' ? 'Funcionario' : 'Cliente'}</div></div>
+              <div><div className="sidebar-user">{user.name}</div><div className="sidebar-role">{user.role === 'dono' ? 'CEO' : user.role === 'gerente' ? 'Gerente' : user.role === 'funcionario' ? 'Funcionario' : 'Cliente'}</div></div>
               <button className="logout-btn" onClick={logout} title="Sair"><LogOut size={16} /></button>
             </>
           )}

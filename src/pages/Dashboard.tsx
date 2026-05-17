@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { fetchDashboardStats, fetchDashboardTrends, fetchTeamWorkload, createTaskRequest, formatNumber } from '../lib/api'
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ComposedChart, Line } from 'recharts'
 import { ListTodo, Clock, CheckCircle, AlertTriangle, Send, Calendar, Users, TrendingUp, Plus } from 'lucide-react'
+import { useToast } from '../components/Toast'
 
 const COLORS = ['#6B6580', '#5DADE2', '#9B59B6', '#FFAA83', '#FFB300', '#34C759', '#FF6B8A', '#34C759', '#FF6B6B']
 const STATUS_COLORS: Record<string, string> = { available: '#34C759', busy: '#FBBC04', overloaded: '#FF6B6B' }
@@ -24,8 +25,10 @@ export default function Dashboard() {
   const [workload, setWorkload] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [days, setDays] = useState(30)
-  const isDono = user?.role === 'dono'
+  const isDono = user?.role === 'dono' || user?.role === 'gerente'
   const isCliente = user?.role === 'cliente'
+  const { toast } = useToast()
+  const [saving, setSaving] = useState(false)
   const [showRequest, setShowRequest] = useState(false)
   const [newRequest, setNewRequest] = useState({ title: '', description: '', drive_link_raw: '' })
 
@@ -95,6 +98,18 @@ export default function Dashboard() {
               <div className="metric-value">{stats.myTasks || 0}</div>
             </div>
             <div className="metric-card">
+              <div className="metric-header"><span className="metric-label">Concluidas Hoje</span><div className="metric-icon" style={{ background: '#34C75920', color: '#34C759' }}><CheckCircle size={16} /></div></div>
+              <div className="metric-value" style={{ color: '#34C759' }}>{stats.concludedToday || 0}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-header"><span className="metric-label">Esta Semana</span><div className="metric-icon" style={{ background: '#34C75920', color: '#34C759' }}><CheckCircle size={16} /></div></div>
+              <div className="metric-value" style={{ color: '#34C759' }}>{stats.concludedWeek || 0}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-header"><span className="metric-label">Este Mes</span><div className="metric-icon" style={{ background: '#34C75920', color: '#34C759' }}><CheckCircle size={16} /></div></div>
+              <div className="metric-value" style={{ color: '#34C759' }}>{stats.concludedMonth || 0}</div>
+            </div>
+            <div className="metric-card">
               <div className="metric-header"><span className="metric-label">Atrasadas</span><div className="metric-icon" style={{ background: '#FF6B6B20', color: '#FF6B6B' }}><AlertTriangle size={16} /></div></div>
               <div className="metric-value">{stats.overdue || 0}</div>
             </div>
@@ -108,6 +123,176 @@ export default function Dashboard() {
           </>}
         </div>
       </section>
+
+      {/* Funcionario: heatmap + streak + evolucao semanal */}
+      {user?.role === 'funcionario' && stats.heatmap && (
+        <section className="dash-section">
+          <div className="charts-grid">
+            <div className="chart-card" style={{ background: 'linear-gradient(135deg, rgba(255,179,0,0.06), rgba(255,107,107,0.04))', border: '1px solid rgba(255,179,0,0.20)' }}>
+              <h3>Sequencia atual</h3>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 12 }}>
+                <div style={{ fontSize: 56, fontWeight: 800, fontFamily: 'var(--font-heading)', lineHeight: 1, color: stats.streak >= 7 ? '#FF6B6B' : stats.streak >= 3 ? '#FFB300' : '#A8A3B8' }}>
+                  {stats.streak || 0}
+                </div>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#fff' }}>{stats.streak === 1 ? 'dia' : 'dias'} 🔥</div>
+                  <div style={{ fontSize: 11, color: '#A8A3B8', marginTop: 4 }}>
+                    {stats.streak === 0 ? 'Conclua uma tarefa hoje pra começar' :
+                     stats.streak >= 14 ? 'Você está em chamas! 🚀' :
+                     stats.streak >= 7 ? 'Excelente! Mantém o ritmo!' :
+                     stats.streak >= 3 ? 'Continua assim!' : 'Cada dia conta!'}
+                  </div>
+                </div>
+              </div>
+              {/* Recorde pessoal */}
+              {stats.streakRecord > 0 && (() => {
+                const pct = stats.streakRecord > 0 ? Math.min(100, (stats.streak / stats.streakRecord) * 100) : 0
+                const tied = stats.streak >= stats.streakRecord && stats.streak > 0
+                return (
+                  <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 11, color: '#A8A3B8', marginBottom: 6 }}>
+                      <span>Recorde pessoal {tied ? '🏆' : ''}</span>
+                      <span style={{ fontWeight: 700, color: tied ? '#FFB300' : '#fff' }}>{stats.streakRecord} {stats.streakRecord === 1 ? 'dia' : 'dias'}</span>
+                    </div>
+                    <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: tied ? 'var(--gradient-primary)' : '#34C759', transition: 'width 0.4s ease' }} />
+                    </div>
+                    {!tied && stats.streak > 0 && stats.streakRecord - stats.streak <= 3 && (
+                      <div style={{ fontSize: 10, color: '#FFB300', marginTop: 6, fontWeight: 600 }}>
+                        Faltam {stats.streakRecord - stats.streak} {stats.streakRecord - stats.streak === 1 ? 'dia' : 'dias'} pra bater seu recorde!
+                      </div>
+                    )}
+                    {tied && (
+                      <div style={{ fontSize: 10, color: '#FFB300', marginTop: 6, fontWeight: 700 }}>
+                        Novo recorde! Continua quebrando.
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+            </div>
+
+            <div className="chart-card">
+              <h3>Evolucao Semanal</h3>
+              <p style={{ fontSize: 11, color: '#6B6580', marginTop: -4, marginBottom: 8 }}>Tarefas concluidas nas ultimas 8 semanas</p>
+              {stats.weeklyHistory?.length > 0 && (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={stats.weeklyHistory}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: '#A8A3B8', fontSize: 10 }} interval={0} angle={-25} textAnchor="end" height={50} />
+                    <YAxis tick={{ fill: '#A8A3B8', fontSize: 10 }} allowDecimals={false} />
+                    <Tooltip content={<Tip />} />
+                    <Bar dataKey="count" name="Concluidas" radius={[4, 4, 0, 0]}>
+                      {stats.weeklyHistory.map((w: any, i: number) => {
+                        const isLast = i === stats.weeklyHistory.length - 1
+                        return <Cell key={i} fill={isLast ? '#FFB300' : '#34C759'} />
+                      })}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          {stats.upcoming?.length > 0 && (
+            <div className="chart-card" style={{ marginTop: 16, borderLeft: '3px solid #FFB300' }}>
+              <h3>Tarefas que precisam de atencao</h3>
+              <p style={{ fontSize: 11, color: '#6B6580', marginTop: -4, marginBottom: 12 }}>Atrasadas + vencendo nos proximos 2 dias. Click pra abrir.</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {stats.upcoming.map((t: any) => {
+                  const dueDate = t.due_date.slice(0, 10)
+                  const today = new Date().toISOString().slice(0, 10)
+                  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1)
+                  const isOverdue = dueDate < today
+                  const isToday = dueDate === today
+                  const isTomorrow = dueDate === tomorrow.toISOString().slice(0, 10)
+                  // Dias atrasados
+                  const daysLate = isOverdue ? Math.floor((new Date(today + 'T12:00:00').getTime() - new Date(dueDate + 'T12:00:00').getTime()) / 86400000) : 0
+                  const label = isOverdue
+                    ? `${daysLate}d ATRASO`
+                    : isToday ? 'HOJE'
+                    : isTomorrow ? 'AMANHA'
+                    : dueDate.split('-').reverse().slice(0, 2).join('/')
+                  const labelBg = isOverdue ? 'rgba(255,107,107,0.25)' : isToday ? 'rgba(255,107,107,0.18)' : isTomorrow ? 'rgba(255,179,0,0.18)' : 'rgba(255,255,255,0.05)'
+                  const labelColor = isOverdue ? '#FF6B6B' : isToday ? '#FF6B6B' : isTomorrow ? '#FFB300' : '#A8A3B8'
+                  return (
+                    <div key={t.id} onClick={() => navigate(`/tasks/${t.id}`)}
+                      style={{ padding: '10px 14px', borderRadius: 8, cursor: 'pointer', background: isOverdue ? 'rgba(255,107,107,0.04)' : 'rgba(255,255,255,0.02)', border: `1px solid ${isOverdue ? 'rgba(255,107,107,0.18)' : 'rgba(255,255,255,0.06)'}`, borderLeft: `3px solid ${isOverdue ? '#FF6B6B' : (t.stage_color || '#6B6580')}`, transition: 'background 0.15s', display: 'flex', alignItems: 'center', gap: 12 }}
+                      onMouseEnter={e => (e.currentTarget.style.background = isOverdue ? 'rgba(255,107,107,0.08)' : 'rgba(255,255,255,0.04)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = isOverdue ? 'rgba(255,107,107,0.04)' : 'rgba(255,255,255,0.02)')}>
+                      <span style={{ minWidth: 80, padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 800, textAlign: 'center', background: labelBg, color: labelColor, fontFamily: 'var(--font-heading)', letterSpacing: 0.5 }}>{label}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</div>
+                        <div style={{ fontSize: 11, color: '#6B6580', marginTop: 2 }}>{t.client_name} · {t.stage_name}</div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="chart-card" style={{ marginTop: 16 }}>
+            <h3>Atividade nos Ultimos 90 Dias</h3>
+            <p style={{ fontSize: 11, color: '#6B6580', marginTop: -4, marginBottom: 12 }}>Cada quadrado e um dia — mais escuro = mais tarefas concluidas</p>
+            {(() => {
+              const max = Math.max(...stats.heatmap.map((d: any) => d.count), 1)
+              const cellSize = 12
+              const cellGap = 3
+              // Agrupa por semana (col) — 13 semanas x 7 dias
+              const cols: any[][] = []
+              let currentWeek: any[] = []
+              const firstDay = new Date(stats.heatmap[0].date + 'T12:00:00')
+              const startDayOfWeek = firstDay.getDay() // 0=Dom
+              // Padding pra alinhar com domingo no topo
+              for (let p = 0; p < startDayOfWeek; p++) currentWeek.push(null)
+              stats.heatmap.forEach((d: any) => {
+                currentWeek.push(d)
+                if (currentWeek.length === 7) { cols.push(currentWeek); currentWeek = [] }
+              })
+              if (currentWeek.length > 0) {
+                while (currentWeek.length < 7) currentWeek.push(null)
+                cols.push(currentWeek)
+              }
+              const colorFor = (count: number) => {
+                if (!count) return 'rgba(255,255,255,0.04)'
+                if (count >= max * 0.75) return '#0E8A3F'
+                if (count >= max * 0.5) return '#1FAA50'
+                if (count >= max * 0.25) return '#34C759'
+                return '#34C75966'
+              }
+              return (
+                <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
+                  <div style={{ display: 'flex', gap: cellGap, minWidth: 'fit-content' }}>
+                    {cols.map((week, wi) => (
+                      <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: cellGap }}>
+                        {week.map((d, di) => d ? (
+                          <div
+                            key={di}
+                            title={`${d.date}: ${d.count} tarefa${d.count !== 1 ? 's' : ''}`}
+                            style={{ width: cellSize, height: cellSize, borderRadius: 2, background: colorFor(d.count) }}
+                          />
+                        ) : (
+                          <div key={di} style={{ width: cellSize, height: cellSize }} />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, fontSize: 10, color: '#6B6580' }}>
+                    <span>Menos</span>
+                    <div style={{ width: 12, height: 12, borderRadius: 2, background: 'rgba(255,255,255,0.04)' }} />
+                    <div style={{ width: 12, height: 12, borderRadius: 2, background: '#34C75966' }} />
+                    <div style={{ width: 12, height: 12, borderRadius: 2, background: '#34C759' }} />
+                    <div style={{ width: 12, height: 12, borderRadius: 2, background: '#1FAA50' }} />
+                    <div style={{ width: 12, height: 12, borderRadius: 2, background: '#0E8A3F' }} />
+                    <span>Mais</span>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+        </section>
+      )}
 
       {/* Trends chart + Department/Category */}
       {isDono && (
@@ -143,6 +328,110 @@ export default function Dashboard() {
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
+              </div>
+            )}
+            {stats.byAssignee?.length > 0 && (
+              <div className="chart-card">
+                <h3>Tarefas Abertas por Funcionario</h3>
+                <ResponsiveContainer width="100%" height={Math.max(220, stats.byAssignee.length * 28 + 40)}>
+                  <BarChart data={stats.byAssignee} layout="vertical" margin={{ left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <XAxis type="number" tick={{ fill: '#A8A3B8', fontSize: 10 }} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" tick={{ fill: '#A8A3B8', fontSize: 11 }} width={110} />
+                    <Tooltip content={<Tip />} />
+                    <Bar dataKey="count" name="Tarefas" radius={[0, 6, 6, 0]}>
+                      {stats.byAssignee.map((a: any, i: number) => <Cell key={a.id} fill={COLORS[i % COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {stats.throughputByAssignee?.length > 0 && (
+              <div className="chart-card">
+                <h3>Concluidas no Periodo (por Funcionario)</h3>
+                <ResponsiveContainer width="100%" height={Math.max(220, stats.throughputByAssignee.length * 28 + 40)}>
+                  <BarChart data={stats.throughputByAssignee} layout="vertical" margin={{ left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <XAxis type="number" tick={{ fill: '#A8A3B8', fontSize: 10 }} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" tick={{ fill: '#A8A3B8', fontSize: 11 }} width={110} />
+                    <Tooltip content={<Tip />} />
+                    <Bar dataKey="count" name="Concluidas" fill="#34C759" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {stats.clientWaitTime?.length > 0 && (
+              <div className="chart-card">
+                <h3>Tempo Medio Aguardando Cliente (horas)</h3>
+                <p style={{ fontSize: 11, color: '#6B6580', marginTop: -4, marginBottom: 8 }}>Quanto tempo cada cliente leva pra aprovar tarefas</p>
+                <ResponsiveContainer width="100%" height={Math.max(220, stats.clientWaitTime.length * 26 + 40)}>
+                  <BarChart data={stats.clientWaitTime.map((c: any) => ({ ...c, avg_hours: Math.round(c.avg_hours * 10) / 10 }))} layout="vertical" margin={{ left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <XAxis type="number" tick={{ fill: '#A8A3B8', fontSize: 10 }} />
+                    <YAxis type="category" dataKey="name" tick={{ fill: '#A8A3B8', fontSize: 11 }} width={130} />
+                    <Tooltip content={<Tip />} formatter={(v: any) => `${v}h`} />
+                    <Bar dataKey="avg_hours" name="Horas" radius={[0, 6, 6, 0]}>
+                      {stats.clientWaitTime.map((c: any, i: number) => {
+                        const color = c.avg_hours > 72 ? '#FF6B6B' : c.avg_hours > 24 ? '#FBBC04' : '#34C759'
+                        return <Cell key={i} fill={color} />
+                      })}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {stats.totalTasks > 0 && (
+              <div className="chart-card">
+                <h3>Taxa de Retrabalho</h3>
+                <p style={{ fontSize: 11, color: '#6B6580', marginTop: -4, marginBottom: 16 }}>Tarefas que voltaram da aprovacao pra revisao/producao</p>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 16 }}>
+                  <div style={{ fontSize: 48, fontWeight: 800, color: stats.reworkRate > 20 ? '#FF6B6B' : stats.reworkRate > 10 ? '#FBBC04' : '#34C759', fontFamily: 'var(--font-heading)' }}>{stats.reworkRate}%</div>
+                  <div style={{ fontSize: 13, color: '#A8A3B8' }}>{stats.reworkedCount || 0} de {stats.totalTasks} tarefas</div>
+                </div>
+                <div style={{ height: 12, background: 'rgba(255,255,255,0.04)', borderRadius: 6, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.min(100, stats.reworkRate)}%`, background: stats.reworkRate > 20 ? '#FF6B6B' : stats.reworkRate > 10 ? '#FBBC04' : '#34C759', borderRadius: 6, transition: 'width 0.3s' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#6B6580', marginTop: 6 }}>
+                  <span>Saudavel &lt; 10%</span>
+                  <span>Atencao 10-20%</span>
+                  <span>Critico &gt; 20%</span>
+                </div>
+              </div>
+            )}
+            {stats.daily?.length > 0 && (
+              <div className="chart-card">
+                <h3>Media de Tarefas Criadas / Dia</h3>
+                {(() => {
+                  const total = (stats.daily as any[]).reduce((s, d) => s + (d.count || 0), 0)
+                  const avg = days > 0 ? Math.round((total / days) * 10) / 10 : 0
+                  const max = Math.max(...(stats.daily as any[]).map((d: any) => d.count || 0), 1)
+                  const filled: any[] = []
+                  const today = new Date()
+                  const map = new Map((stats.daily as any[]).map((d: any) => [d.date, d.count]))
+                  for (let i = days - 1; i >= 0; i--) {
+                    const d = new Date(today); d.setDate(d.getDate() - i)
+                    const key = d.toISOString().slice(0, 10)
+                    filled.push({ date: key.slice(5), count: map.get(key) || 0 })
+                  }
+                  return (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
+                        <div style={{ fontSize: 32, fontWeight: 800, color: '#FFB300', fontFamily: 'var(--font-heading)' }}>{avg}</div>
+                        <div style={{ fontSize: 12, color: '#A8A3B8' }}>tarefas/dia · ultimos {days}d</div>
+                        <div style={{ marginLeft: 'auto', fontSize: 11, color: '#6B6580' }}>{total} criadas · pico {max}</div>
+                      </div>
+                      <ResponsiveContainer width="100%" height={140}>
+                        <BarChart data={filled}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                          <XAxis dataKey="date" tick={{ fill: '#A8A3B8', fontSize: 9 }} interval={Math.max(0, Math.floor(filled.length / 12))} />
+                          <YAxis tick={{ fill: '#A8A3B8', fontSize: 10 }} allowDecimals={false} />
+                          <Tooltip content={<Tip />} />
+                          <Bar dataKey="count" name="Criadas" fill="#FFB300" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </>
+                  )
+                })()}
               </div>
             )}
           </div>
@@ -198,7 +487,7 @@ export default function Dashboard() {
       )}
 
       {showRequest && (
-        <div className="modal-overlay" onClick={() => setShowRequest(false)}><div className="modal" style={{ maxWidth: 540 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowRequest(false))() }}><div className="modal" style={{ maxWidth: 540 }} onClick={e => e.stopPropagation()}>
           <h2><Plus size={20} style={{ marginRight: 8, verticalAlign: 'middle', color: '#FFB300' }} />Solicitar Nova Tarefa</h2>
           <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Sua solicitacao sera enviada para aprovacao do gerente/CEO. Apos aprovada, a equipe entrara em producao.</p>
           <div className="form-group"><label>Titulo *</label><input className="input" value={newRequest.title} onChange={e => setNewRequest(p => ({ ...p, title: e.target.value }))} placeholder="Ex: Criar post novo sobre lancamento" /></div>
@@ -206,8 +495,8 @@ export default function Dashboard() {
           <div className="form-group"><label>Link dos arquivos (opcional)</label><input className="input" value={newRequest.drive_link_raw} onChange={e => setNewRequest(p => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/... ou outro link" /></div>
           <div className="modal-actions">
             <button className="btn btn-secondary" onClick={() => setShowRequest(false)}>Cancelar</button>
-            <button className="btn btn-primary" disabled={!newRequest.title} onClick={async () => { await createTaskRequest({ title: newRequest.title, description: newRequest.description, drive_link_raw: newRequest.drive_link_raw || undefined }); setShowRequest(false); setNewRequest({ title: '', description: '', drive_link_raw: '' }); alert('Solicitacao enviada! A equipe sera notificada.') }}>
-              Enviar Solicitacao
+            <button className="btn btn-primary" disabled={saving || !newRequest.title} onClick={async () => { setSaving(true); try { await createTaskRequest({ title: newRequest.title, description: newRequest.description, drive_link_raw: newRequest.drive_link_raw || undefined }); setShowRequest(false); setNewRequest({ title: '', description: '', drive_link_raw: '' }); toast('Solicitacao enviada!') } catch (err: any) { toast(err.message || 'Erro ao enviar', 'error') } finally { setSaving(false) } }}>
+              {saving ? 'Enviando...' : 'Enviar Solicitacao'}
             </button>
           </div>
         </div></div>

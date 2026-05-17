@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
-import { fetchTask, fetchClients, fetchDepartments, fetchUsers, fetchCategories, fetchStages, updateTask, moveTaskStage, addTaskComment, addTaskAttachment, deleteTaskAttachment, approveTask, rejectTask, startTimer, stopTimer, confirmRecording, type Task, type TaskComment, type TaskHistory, type TaskAttachment, type TimeEntry, type Client, type Department, type User as UserT, type TaskCategory, type PipelineStage } from '../lib/api'
+import { fetchTask, fetchClients, fetchDepartments, fetchUsers, fetchCategories, fetchStages, updateTask, moveTaskStage, addTaskComment, addTaskAttachment, deleteTaskAttachment, approveTask, rejectTask, startTimer, stopTimer, confirmRecording, addSubtask, getApprovalFiles, type Task, type TaskComment, type TaskHistory, type TaskAttachment, type TimeEntry, type Client, type Department, type User as UserT, type TaskCategory, type PipelineStage } from '../lib/api'
+import { isDriveUrl, toDriveEmbedUrl } from '../lib/drive'
 import { ArrowLeft, Building2, Clock, User, ExternalLink, CheckCircle, XCircle, Send, MessageCircle, GitBranch, Paperclip, Eye, Edit3, Save, X, Plus, AlertTriangle, Layers, ChevronRight, Video, Trash2 } from 'lucide-react'
+import { useToast } from '../components/Toast'
 
 export default function TaskDetail() {
   const { id } = useParams()
@@ -38,8 +40,14 @@ export default function TaskDetail() {
   // Recording confirmation modal (editorial workflow)
   const [showRecording, setShowRecording] = useState(false)
   const [recordingData, setRecordingData] = useState({ recording_datetime: '', capture_user_id: '', edit_user_id: '', design_user_id: '' })
+  // Subtarefa modal (mae generica e editorial)
+  const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
+  const [showNewSub, setShowNewSub] = useState(false)
+  const [newSub, setNewSub] = useState({ title: '', description: '', due_date: today, priority: 'normal', assigned_to: '', department_id: '', category_id: '' })
+  const [savingSub, setSavingSub] = useState(false)
 
-  const isDono = user?.role === 'dono'
+  const { toast } = useToast()
+  const isDono = user?.role === 'dono' || user?.role === 'gerente'
   const isFunc = user?.role === 'funcionario'
   const isCliente = user?.role === 'cliente'
   const canEdit = isDono || (isFunc && ((task as any)?.assignees?.some((a: any) => a.user_id === user?.id) || task?.assigned_to === user?.id))
@@ -48,7 +56,8 @@ export default function TaskDetail() {
     if (!id) return
     const data = await fetchTask(+id)
     setTask(data.task); setComments(data.comments); setHistory(data.history); setAttachments(data.attachments)
-    setEditData({ title: data.task.title, description: data.task.description || '', due_date: data.task.due_date?.slice(0, 10) || '', priority: data.task.priority, department_id: data.task.department_id || '', assigned_to: (data.task.assignees || []).map((a: any) => String(a.user_id)), category_id: data.task.category_id || '', drive_link: data.task.drive_link || '', drive_link_raw: data.task.drive_link_raw || '', approval_link: data.task.approval_link || '', approval_text: data.task.approval_text || '', publish_date: data.task.publish_date || '', publish_objective: data.task.publish_objective || '', meeting_datetime: (data.task as any).meeting_datetime || '', recording_datetime: (data.task as any).recording_datetime || '' })
+    const files = getApprovalFiles(data.task as any)
+    setEditData({ title: data.task.title, description: data.task.description || '', due_date: data.task.due_date?.slice(0, 10) || '', priority: data.task.priority, department_id: data.task.department_id || '', assigned_to: (data.task.assignees || []).map((a: any) => String(a.user_id)), category_id: data.task.category_id || '', drive_link: data.task.drive_link || '', drive_link_raw: data.task.drive_link_raw || '', approval_link: data.task.approval_link || '', approval_files: files, is_carrossel: files.length > 1, approval_text: data.task.approval_text || '', publish_date: data.task.publish_date || '', publish_objective: data.task.publish_objective || '', meeting_datetime: (data.task as any).meeting_datetime || '', recording_datetime: (data.task as any).recording_datetime || '' })
     setTimeEntries(data.timeEntries || []); setTotalTime(data.totalTimeSeconds || 0)
     if (data.activeTimer) { setActiveTimerEntry(data.activeTimer); setTimerRunning(true) } else { setActiveTimerEntry(null); setTimerRunning(false) }
   }, [id])
@@ -72,10 +81,10 @@ export default function TaskDetail() {
       const startedAt = new Date(activeTimerEntry.started_at + '-03:00').getTime()
       const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
       setTimerElapsed(elapsed)
-      // Check every 1 hour (3600s)
-      const currentHour = Math.floor(elapsed / 3600)
-      if (currentHour > 0 && currentHour > lastCheckRef.current) {
-        lastCheckRef.current = currentHour
+      // Check every 1 hora (3600s)
+      const currentCheck = Math.floor(elapsed / 3600)
+      if (currentCheck > 0 && currentCheck > lastCheckRef.current) {
+        lastCheckRef.current = currentCheck
         setShowTimerCheck(true)
       }
     }, 1000)
@@ -100,8 +109,22 @@ export default function TaskDetail() {
 
   const handleSaveEdit = async () => {
     if (!task) return
-    await updateTask(task.id, { ...editData, department_id: editData.department_id ? +editData.department_id : null, assigned_to: (editData.assigned_to || []).map(Number), category_id: editData.category_id ? +editData.category_id : null })
-    setEditing(false); loadTask()
+    try {
+      // Normaliza approval_files: se carrossel use array, senao usa approval_link como single
+      const cleanFiles = (editData.approval_files || []).filter((s: string) => s && s.trim())
+      const payload: any = { ...editData, department_id: editData.department_id ? +editData.department_id : null, assigned_to: (editData.assigned_to || []).map(Number), category_id: editData.category_id ? +editData.category_id : null }
+      if (editData.is_carrossel) {
+        payload.approval_files = cleanFiles
+        delete payload.approval_link // backend sincroniza com primeiro item
+      } else {
+        // modo single: envia approval_files com 1 item (= approval_link), pra zerar carrossel anterior
+        payload.approval_files = editData.approval_link ? [editData.approval_link] : []
+      }
+      delete payload.is_carrossel
+      await updateTask(task.id, payload)
+      setEditing(false); loadTask()
+      toast('Tarefa atualizada!')
+    } catch (err: any) { toast(err.message || 'Erro ao salvar', 'error') }
   }
 
   const handleAddAttachment = async () => {
@@ -110,14 +133,35 @@ export default function TaskDetail() {
     setNewAttUrl(''); setNewAttName(''); loadTask()
   }
 
+  const handleAddSubtask = async () => {
+    if (!task || !newSub.title) return
+    setSavingSub(true)
+    try {
+      await addSubtask(task.id, {
+        title: newSub.title,
+        description: newSub.description || undefined,
+        due_date: newSub.due_date || undefined,
+        priority: newSub.priority,
+        assigned_to: newSub.assigned_to ? +newSub.assigned_to : undefined,
+        department_id: newSub.department_id ? +newSub.department_id : undefined,
+        category_id: newSub.category_id ? +newSub.category_id : undefined,
+      })
+      setShowNewSub(false)
+      setNewSub({ title: '', description: '', due_date: today, priority: 'normal', assigned_to: '', department_id: '', category_id: '' })
+      loadTask()
+      toast('Subtarefa adicionada')
+    } catch (e: any) { toast(e?.message || 'Erro ao adicionar subtarefa', 'error') }
+    finally { setSavingSub(false) }
+  }
+
   const handleComment = async () => {
     if (!commentText.trim() || !task) return
     const comment = await addTaskComment(task.id, commentText, isInternal)
     setComments(prev => [...prev, comment]); setCommentText('')
   }
 
-  const handleApprove = async () => { if (task) { await approveTask(task.id); loadTask() } }
-  const handleReject = async () => { if (task && rejectReason) { await rejectTask(task.id, rejectReason); setShowReject(false); setRejectReason(''); loadTask() } }
+  const handleApprove = async () => { if (task) { try { await approveTask(task.id); loadTask(); toast('Tarefa aprovada!') } catch (err: any) { toast(err.message || 'Erro ao aprovar', 'error') } } }
+  const handleReject = async () => { if (task && rejectReason) { try { await rejectTask(task.id, rejectReason); setShowReject(false); setRejectReason(''); loadTask(); toast('Tarefa rejeitada') } catch (err: any) { toast(err.message || 'Erro ao rejeitar', 'error') } } }
 
   const handleConfirmRecording = async () => {
     if (!task || !recordingData.recording_datetime) return
@@ -135,15 +179,16 @@ export default function TaskDetail() {
   const handleStageMove = async (stage: string) => {
     if (!task) return
     if ((stage === 'aprovacao_interna' || stage === 'aguardando_cliente') && !task.approval_link) {
-      alert('Preencha o "Conteudo para Aprovacao" antes de enviar pra aprovacao.\n\nClique em Editar e preencha o link do arquivo finalizado na secao dourada.')
+      toast('Preencha o "Conteudo para Aprovacao" antes de enviar pra aprovacao.', 'error')
       return
     }
     try {
       if (stage === 'em_producao') lastCheckRef.current = 0
       await moveTaskStage(task.id, stage)
       loadTask()
+      toast('Etapa atualizada!')
     }
-    catch (err: any) { alert(err.message || 'Erro ao mover tarefa') }
+    catch (err: any) { toast(err.message || 'Erro ao mover tarefa', 'error') }
   }
 
   if (loading) return <div className="loading-container"><div className="spinner" /></div>
@@ -319,14 +364,55 @@ export default function TaskDetail() {
 
                 {/* Approval content section */}
                 <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(245,166,35,0.04)', border: '1px solid rgba(245,166,35,0.12)', borderRadius: 10 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Conteudo para Aprovacao</div>
-                  <div className="form-group"><label>Link do arquivo finalizado *</label><input className="input" value={editData.approval_link} onChange={e => setEditData((p: any) => ({ ...p, approval_link: e.target.value }))} placeholder="Link do Drive com o arquivo pronto pra aprovacao..." /></div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Conteudo para Aprovacao</div>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#A8A3B8', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={!!editData.is_carrossel} onChange={e => {
+                        const checked = e.target.checked
+                        setEditData((p: any) => {
+                          if (checked) {
+                            // OFF -> ON: usa approval_link atual como primeiro slide (se existir)
+                            const initial = (p.approval_files && p.approval_files.length > 0) ? p.approval_files : (p.approval_link ? [p.approval_link] : [''])
+                            return { ...p, is_carrossel: true, approval_files: initial }
+                          } else {
+                            // ON -> OFF: pega o primeiro slide como approval_link
+                            const first = (p.approval_files && p.approval_files[0]) || p.approval_link || ''
+                            return { ...p, is_carrossel: false, approval_link: first, approval_files: first ? [first] : [] }
+                          }
+                        })
+                      }} style={{ accentColor: '#FFB300' }} />
+                      Carrossel (varios arquivos)
+                    </label>
+                  </div>
+                  {editData.is_carrossel ? (
+                    <div className="form-group">
+                      <label>Arquivos do carrossel *</label>
+                      {(editData.approval_files || []).map((url: string, idx: number) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                          <span style={{ minWidth: 56, fontSize: 11, color: '#6B6580', fontWeight: 700 }}>Slide {idx + 1}</span>
+                          <input className="input" value={url} placeholder="Link do Drive (publico)" style={{ flex: 1 }} onChange={e => {
+                            const v = e.target.value
+                            setEditData((p: any) => ({ ...p, approval_files: p.approval_files.map((x: string, i: number) => i === idx ? v : x) }))
+                          }} />
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditData((p: any) => ({ ...p, approval_files: p.approval_files.filter((_: string, i: number) => i !== idx) }))} title="Remover" style={{ padding: '6px 10px' }}>
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditData((p: any) => ({ ...p, approval_files: [...(p.approval_files || []), ''] }))} style={{ marginTop: 4 }}>
+                        <Plus size={12} /> Adicionar slide
+                      </button>
+                      <small style={{ fontSize: 11, color: '#6B6580', marginTop: 6, display: 'block' }}>Cada link vira um slide pro cliente ver. Precisam ser publicos no Drive.</small>
+                    </div>
+                  ) : (
+                    <div className="form-group"><label>Link do arquivo finalizado *</label><input className="input" value={editData.approval_link} onChange={e => setEditData((p: any) => ({ ...p, approval_link: e.target.value }))} placeholder="Link do Drive — compartilhamento: qualquer pessoa com o link" /><small style={{ fontSize: 11, color: '#6B6580', marginTop: 4, display: 'block' }}>O cliente vai ver o video/imagem embutido. Precisa estar publico no Drive.</small></div>
+                  )}
                   <div className="form-group"><label>Texto / Legenda</label><textarea className="input" rows={3} value={editData.approval_text} onChange={e => setEditData((p: any) => ({ ...p, approval_text: e.target.value }))} placeholder="Legenda do post, texto da publicacao, descricao..." /></div>
                   <div className="form-row">
                     <div className="form-group"><label>Data da Publicacao</label><input className="input" type="date" value={editData.publish_date} onChange={e => setEditData((p: any) => ({ ...p, publish_date: e.target.value }))} /></div>
                     <div className="form-group"><label>Objetivo da Publicacao</label><input className="input" value={editData.publish_objective} onChange={e => setEditData((p: any) => ({ ...p, publish_objective: e.target.value }))} placeholder="Ex: Gerar leads, engajamento, branding..." /></div>
                   </div>
-                  <div style={{ fontSize: 10, color: '#6E6887' }}>Obrigatorio preencher o link antes de enviar pra aprovacao. Data e objetivo sao opcionais.</div>
+                  <div style={{ fontSize: 10, color: '#6E6887' }}>Obrigatorio preencher pelo menos 1 link antes de enviar pra aprovacao. Data e objetivo sao opcionais.</div>
                 </div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
                   <button className="btn btn-primary btn-sm" onClick={handleSaveEdit}><Save size={12} /> Salvar</button>
@@ -416,15 +502,25 @@ export default function TaskDetail() {
           </div>
 
           {/* Subtasks (when viewing a mother task) */}
-          {(task as any).subtasks?.length > 0 && (
+          {(((task as any).subtasks?.length > 0) || (task as any).task_type === 'mae' || (task as any).task_type === 'mae_editorial') && (
             <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid #FFB300' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Layers size={12} /> Subtarefas ({(task as any).subtasks.filter((s: any) => s.stage === 'concluido').length}/{(task as any).subtasks.length})
+                  <Layers size={12} /> Subtarefas ({((task as any).subtasks || []).filter((s: any) => s.stage === 'concluido').length}/{((task as any).subtasks || []).length})
                 </div>
+                {!isCliente && (
+                  <button className="btn btn-secondary btn-sm" onClick={() => setShowNewSub(true)} style={{ padding: '4px 10px', fontSize: 11 }}>
+                    <Plus size={11} /> Subtarefa
+                  </button>
+                )}
               </div>
+              {((task as any).subtasks || []).length === 0 && (
+                <div style={{ padding: '12px 14px', fontSize: 12, color: '#9B96B0', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: 8 }}>
+                  Sem subtarefas ainda. Clica em "+ Subtarefa" pra adicionar a primeira.
+                </div>
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {(task as any).subtasks.map((sub: any) => {
+                {((task as any).subtasks || []).map((sub: any) => {
                   const isOverdueSub = sub.due_date && sub.due_date.slice(0, 10) < (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}` })() && sub.stage !== 'concluido' && sub.stage !== 'rejeitado'
                   return (
                     <div key={sub.id} onClick={() => navigate(`/tasks/${sub.id}`)}
@@ -473,14 +569,57 @@ export default function TaskDetail() {
               {(task.approval_link || task.approval_text) ? (
                 <div className="card" style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Conteudo para Aprovacao</div>
-                  {task.approval_link && (
-                    <a href={task.approval_link} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm" style={{ marginBottom: 12, display: 'inline-flex' }}>
-                      <ExternalLink size={14} /> Ver Arquivo
-                    </a>
-                  )}
+                  {(() => {
+                    const files = getApprovalFiles(task as any)
+                    if (files.length === 0) return null
+                    const isCarrossel = files.length > 1
+                    return (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#9B96B0', marginBottom: 6 }}>
+                          {isCarrossel ? `Carrossel — ${files.length} arquivos` : 'Arquivo a ser postado'}
+                        </div>
+                        {isCliente ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                            {files.map((url, idx) => isDriveUrl(url) ? (
+                              <div key={idx}>
+                                {isCarrossel && <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', marginBottom: 6, letterSpacing: 0.5 }}>SLIDE {idx + 1} / {files.length}</div>}
+                                <div style={{ width: '100%', maxWidth: 800, aspectRatio: '16/9', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: '#000' }}>
+                                  <iframe
+                                    src={toDriveEmbedUrl(url) || ''}
+                                    title={`Arquivo ${idx + 1} — ${task.title}`}
+                                    allow="autoplay; fullscreen; encrypted-media"
+                                    allowFullScreen
+                                    style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                                  />
+                                </div>
+                                <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 11, color: '#9B96B0', textDecoration: 'none' }}>
+                                  <ExternalLink size={11} /> Abrir em nova aba
+                                </a>
+                              </div>
+                            ) : (
+                              <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignSelf: 'flex-start' }}>
+                                <ExternalLink size={14} /> {isCarrossel ? `Ver Slide ${idx + 1}` : 'Ver Arquivo'}
+                              </a>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {files.map((url, idx) => (
+                              <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm" style={{ display: 'inline-flex' }}>
+                                <ExternalLink size={14} /> {isCarrossel ? `Slide ${idx + 1}` : 'Ver Arquivo'}
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                   {task.approval_text && (
-                    <div style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)', fontSize: 14, lineHeight: 1.6, color: '#F2F0F7', whiteSpace: 'pre-wrap', marginBottom: 12 }}>
-                      {task.approval_text}
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#9B96B0', marginBottom: 6 }}>Legenda do post</div>
+                      <div style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)', fontSize: 14, lineHeight: 1.6, color: '#F2F0F7', whiteSpace: 'pre-wrap' }}>
+                        {task.approval_text}
+                      </div>
                     </div>
                   )}
                   {(task.publish_date || task.publish_objective) && (
@@ -613,7 +752,7 @@ export default function TaskDetail() {
 
       {/* Confirm Recording modal */}
       {showRecording && (
-        <div className="modal-overlay" onClick={() => setShowRecording(false)}><div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowRecording(false))() }}><div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
           <h2><Video size={18} style={{ marginRight: 8, verticalAlign: 'middle', color: '#FFB300' }} />Confirmar Data de Gravacao</h2>
           <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Sera criada a tarefa de Gravacao (no dia escolhido) e Criar Imagens (em paralelo). Apos a Gravacao concluir, Subir Arquivos e Editar Video sao criadas automaticamente.</p>
           <div className="form-group"><label>Data e Hora da Gravacao *</label><input className="input" type="datetime-local" value={recordingData.recording_datetime} onChange={e => setRecordingData(p => ({ ...p, recording_datetime: e.target.value }))} /></div>
@@ -659,9 +798,33 @@ export default function TaskDetail() {
         </div></div>
       )}
 
+      {/* New Subtarefa modal */}
+      {showNewSub && (
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowNewSub(false))() }}>
+          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <h2><Plus size={18} style={{ marginRight: 8, verticalAlign: 'middle', color: '#FFB300' }} />Nova Subtarefa</h2>
+            <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Vinculada a "{task?.title}". Ao concluir todas as subtarefas, a mae auto-conclui.</p>
+            <div className="form-group"><label>Titulo *</label><input className="input" value={newSub.title} onChange={e => setNewSub(p => ({ ...p, title: e.target.value }))} placeholder="Ex: Desenhar capa" autoFocus /></div>
+            <div className="form-group"><label>Descricao</label><textarea className="input" rows={3} value={newSub.description} onChange={e => setNewSub(p => ({ ...p, description: e.target.value }))} /></div>
+            <div className="form-row">
+              <div className="form-group"><label>Prazo</label><input className="input" type="date" value={newSub.due_date} onChange={e => setNewSub(p => ({ ...p, due_date: e.target.value }))} /></div>
+              <div className="form-group"><label>Prioridade</label><select className="select" value={newSub.priority} onChange={e => setNewSub(p => ({ ...p, priority: e.target.value }))}><option value="baixa">Baixa</option><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label>Departamento</label><select className="select" value={newSub.department_id} onChange={e => setNewSub(p => ({ ...p, department_id: e.target.value }))}><option value="">Nenhum</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+              <div className="form-group"><label>Responsavel</label><select className="select" value={newSub.assigned_to} onChange={e => setNewSub(p => ({ ...p, assigned_to: e.target.value }))}><option value="">Ninguem</option>{users.filter(u => u.role !== 'cliente').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setShowNewSub(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={handleAddSubtask} disabled={savingSub || !newSub.title}>{savingSub ? 'Adicionando...' : 'Adicionar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Reject modal */}
       {showReject && (
-        <div className="modal-overlay" onClick={() => setShowReject(false)}><div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowReject(false))() }}><div className="modal" onClick={e => e.stopPropagation()}>
           <h2>Rejeitar Tarefa</h2>
           <div className="form-group"><label>Motivo da rejeicao *</label><textarea className="input" rows={3} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Descreva o que precisa ser alterado..." /></div>
           <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowReject(false)}>Cancelar</button><button className="btn btn-danger" onClick={handleReject} disabled={!rejectReason.trim()}>Rejeitar</button></div>
@@ -671,14 +834,15 @@ export default function TaskDetail() {
       {/* Timer hourly check popup */}
       {showTimerCheck && (
         <div className="modal-overlay">
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 380, textAlign: 'center' }}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, textAlign: 'center' }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>&#9202;</div>
-            <h2 style={{ marginBottom: 8 }}>Ainda esta produzindo?</h2>
-            <p style={{ color: '#9B96B0', fontSize: 14, marginBottom: 8 }}>Timer ativo ha <strong style={{ color: '#FFB300' }}>{formatTime(timerElapsed)}</strong></p>
-            <p style={{ color: '#6B6580', fontSize: 12, marginBottom: 20 }}>"{task?.title}"</p>
+            <h2 style={{ marginBottom: 8 }}>Tarefa em producao ha mais de 2 horas</h2>
+            <p style={{ color: '#9B96B0', fontSize: 14, marginBottom: 8 }}>O timer desta tarefa esta ativo ha <strong style={{ color: '#FFB300' }}>{formatTime(timerElapsed)}</strong></p>
+            <p style={{ color: '#6B6580', fontSize: 12, marginBottom: 6 }}>"{task?.title}"</p>
+            <p style={{ color: '#A8A3B8', fontSize: 12, marginBottom: 20 }}>Confirma que ainda esta trabalhando nela ou deseja parar o timer e mover pro backlog?</p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
               <button className="btn btn-primary" onClick={() => setShowTimerCheck(false)} style={{ minWidth: 120 }}>Sim, continuar</button>
-              <button className="btn btn-danger" onClick={handleTimerCheckNo} style={{ minWidth: 120 }}>Nao, parar</button>
+              <button className="btn btn-danger" onClick={handleTimerCheckNo} style={{ minWidth: 120 }}>Parar timer</button>
             </div>
           </div>
         </div>

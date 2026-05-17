@@ -403,3 +403,128 @@ th.right, td.right { text-align: right; }
   .login-card { padding: 22px; margin: 10px; }
   .hamburger-btn { top: 8px; left: 8px; }
 }
+
+/* =========================================
+   PERFORMANCE AREA (migrado do /core)
+   Adaptado pras variaveis do design system do Hub (accent amarelo)
+   ========================================= */
+
+.client-tabs { display: flex; gap: 4px; background: var(--bg-card); border-radius: var(--radius-sm); padding: 3px; border: 1px solid var(--border-subtle); }
+.client-tab { display: flex; align-items: center; gap: 6px; padding: 7px 16px; border: none; border-radius: 6px; background: transparent; color: var(--text-muted); font-size: 12px; font-weight: 600; cursor: pointer; transition: var(--transition); font-family: var(--font-body); }
+.client-tab:hover { color: var(--text-secondary); background: rgba(255, 255, 255, 0.04); }
+.client-tab.active { background: var(--gradient-primary); color: #0A0118; }
+
+.funnel-container { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; }
+.funnel-tier { display: flex; align-items: center; gap: 10px; transition: all 0.3s ease; }
+.funnel-tier-bar { flex: 1; padding: 14px 16px; border-radius: 8px; text-align: center; position: relative; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.funnel-tier-label { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.8); text-transform: uppercase; letter-spacing: 0.3px; }
+.funnel-tier-value { font-family: var(--font-heading); font-size: 20px; font-weight: 700; color: white; }
+.funnel-tier-rate { font-size: 10px; color: var(--text-muted); white-space: nowrap; min-width: 36px; }
+
+.crm-funnel { display: flex; flex-direction: column; gap: 8px; padding: 8px 0; }
+.crm-funnel-row { display: flex; align-items: center; gap: 12px; }
+.crm-funnel-label { font-size: 11px; color: var(--text-secondary); min-width: 120px; text-align: right; }
+.crm-funnel-bar-wrap { flex: 1; }
+.crm-funnel-bar { height: 32px; border-radius: var(--radius-sm); display: flex; align-items: center; padding: 0 12px; font-size: 13px; font-weight: 700; color: white; font-family: var(--font-heading); min-width: 40px; transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1); letter-spacing: -0.01em; }
+.crm-funnel-rate { font-size: 10px; color: var(--text-muted); margin-left: 8px; white-space: nowrap; }
+
+.table-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 24px; box-shadow: var(--shadow-md); }
+.table-card .table-header { padding: 18px 20px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-subtle); }
+.table-card .table-header h3 { font-size: 13px; font-weight: 700; font-family: var(--font-heading); margin-bottom: 0; letter-spacing: 0.02em; }
+.campaign-table { width: 100%; border-collapse: collapse; }
+.campaign-table thead { background: var(--bg-secondary); }
+.campaign-table th { padding: 12px 16px; text-align: left; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid var(--border-medium); }
+.campaign-table th.right, .campaign-table td.right { text-align: right; }
+.campaign-table tbody tr { transition: background var(--transition); }
+.campaign-table tbody tr:hover { background: var(--bg-card-hover); }
+.campaign-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.015); }
+.campaign-table tbody tr:nth-child(even):hover { background: var(--bg-card-hover); }
+.campaign-table td { padding: 13px 16px; font-size: 13px; color: var(--text-secondary); border-bottom: 1px solid var(--border-subtle); font-variant-numeric: tabular-nums; }
+.campaign-table td.name { color: var(--text-primary); font-weight: 600; max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.change-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: var(--radius-sm); margin-left: 6px; }
+.change-badge.positive { color: var(--positive); background: rgba(34,197,94,0.10); }
+.change-badge.negative { color: var(--negative); background: rgba(239,68,68,0.10); }
+.stage-row td { padding: 8px 14px !important; border-bottom: none !important; background: transparent !important; }
+.stage-badge { font-family: var(--font-heading); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 3px 10px; border: 1px solid; border-radius: 4px; }
+
+.performance-area .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.performance-area .charts-grid .chart-card.full-width { grid-column: 1 / -1; }
+.performance-area .chart-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 22px; box-shadow: var(--shadow-md); transition: all var(--transition); }
+.performance-area .chart-card h3 { font-size: 11px; font-weight: 700; font-family: var(--font-heading); color: var(--text-muted); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.08em; }
+.performance-area .dash-section { margin-bottom: 32px; }
+.performance-area .section-title { font-family: var(--font-heading); font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 6px; }
+
+.performance-area .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.performance-area .metric-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 22px 24px; transition: all var(--transition); box-shadow: var(--shadow-md); }
+.performance-area .metric-card:hover { border-color: var(--border-medium); transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+.performance-area .metric-card .metric-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.performance-area .metric-card .metric-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.performance-area .metric-card .metric-icon { width: 34px; height: 34px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; }
+.performance-area .metric-card .metric-value { font-family: var(--font-heading); font-size: 28px; font-weight: 800; color: var(--text-primary); line-height: 1; margin-bottom: 8px; letter-spacing: -0.02em; }
+.performance-area .metric-card .metric-sub { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+.performance-area .metric-card .metric-sub .positive { color: var(--positive); }
+.performance-area .metric-card .metric-sub .negative { color: var(--negative); }
+.performance-area .metric-card.metric-alert { border-color: rgba(239,68,68,0.25); background: rgba(239,68,68,0.03); }
+.metric-alert-text { margin-top: 8px; font-size: 10px; font-weight: 600; color: var(--accent); display: flex; align-items: center; gap: 4px; }
+
+.metric-groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.metric-group { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 18px; }
+.metric-group h4 { font-family: var(--font-heading); font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+.metric-row { display: flex; align-items: baseline; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); }
+.metric-row:last-child { border-bottom: none; }
+.metric-row .label { font-size: 12px; color: var(--text-secondary); }
+.metric-row .value { font-family: var(--font-heading); font-size: 14px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+.performance-area .date-selector { display: flex; gap: 4px; background: var(--bg-card); border-radius: var(--radius-sm); padding: 3px; border: 1px solid var(--border-subtle); }
+.performance-area .date-btn { padding: 7px 14px; border: none; background: transparent; color: var(--text-secondary); font-family: var(--font-body); font-size: 12px; font-weight: 500; border-radius: 6px; cursor: pointer; transition: all var(--transition); display: inline-flex; align-items: center; gap: 4px; }
+.performance-area .date-btn:hover { color: var(--text-primary); }
+.performance-area .date-btn.active { background: var(--gradient-primary); color: #0A0118; }
+
+.performance-area .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 280px; color: var(--text-secondary); text-align: center; padding: 40px 20px; }
+.performance-area .empty-state .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+.performance-area .empty-state h3 { font-size: 18px; margin-bottom: 8px; color: var(--text-primary); }
+
+.ig-accounts-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.ig-account-pill { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border: 1px solid var(--border-subtle); border-radius: 24px; background: var(--bg-card); color: var(--text-secondary); font-family: var(--font-body); font-size: 12px; font-weight: 500; cursor: pointer; transition: all var(--transition); }
+.ig-account-pill:hover { border-color: var(--border-medium); color: var(--text-primary); }
+.ig-account-pill.active { border-color: var(--accent); color: var(--text-primary); background: var(--bg-card-hover); box-shadow: 0 0 16px rgba(255,179,0,0.1); }
+.ig-pill-avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+.ig-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; gap: 16px; }
+.ig-profile-summary { display: flex; align-items: center; gap: 16px; }
+.ig-profile-pic { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent); }
+.ig-profile-summary h2 { font-size: 20px; font-weight: 600; }
+.ig-bio { font-size: 12px; color: var(--text-muted); margin-top: 2px; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ig-stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+.ig-stat-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 20px; text-align: center; transition: all var(--transition); }
+.ig-stat-card:hover { border-color: var(--border-medium); transform: translateY(-2px); }
+.ig-stat-value { font-family: var(--font-heading); font-size: 28px; font-weight: 700; color: var(--text-primary); line-height: 1; }
+.ig-stat-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 6px; }
+.ig-media-section { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; margin-top: 20px; }
+.ig-media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; padding: 16px; }
+.ig-media-card { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); overflow: hidden; transition: all var(--transition); display: block; text-decoration: none; }
+.ig-media-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.ig-media-card.top-post { border-color: var(--accent); }
+.ig-top-badge { position: absolute; top: 6px; left: 6px; background: var(--accent); color: #000; font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; display: flex; align-items: center; gap: 3px; }
+.ig-media-thumb { position: relative; width: 100%; aspect-ratio: 1; background: var(--bg-input); overflow: hidden; }
+.ig-media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ig-media-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 32px; opacity: 0.3; }
+.ig-media-type { position: absolute; top: 6px; right: 6px; font-size: 9px; font-weight: 600; text-transform: uppercase; color: white; background: rgba(0,0,0,0.7); border-radius: 4px; padding: 3px 6px; letter-spacing: 0.3px; }
+.ig-media-stats { display: flex; gap: 10px; padding: 8px 10px 4px; flex-wrap: wrap; }
+.ig-media-stat { display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-secondary); }
+.ig-media-date { font-size: 10px; color: var(--text-muted); padding: 0 10px; }
+.ig-media-caption { font-size: 11px; color: var(--text-muted); padding: 4px 10px 10px; line-height: 1.3; }
+
+.recharts-cartesian-axis-tick-value { fill: var(--text-muted) !important; font-size: 10px !important; }
+.recharts-legend-item-text { color: var(--text-secondary) !important; font-size: 11px !important; }
+.recharts-cartesian-grid-horizontal line, .recharts-cartesian-grid-vertical line { stroke: rgba(255,255,255,0.03) !important; }
+.recharts-tooltip-cursor { stroke: rgba(255,255,255,0.08) !important; }
+
+@media (max-width: 1300px) {
+  .metric-groups { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 1100px) {
+  .performance-area .charts-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .metric-groups { grid-template-columns: 1fr; }
+}

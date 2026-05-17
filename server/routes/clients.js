@@ -6,17 +6,20 @@ import { requireRole } from '../middleware/auth.js'
 
 const router = Router()
 
-router.get('/', requireRole('dono', 'funcionario'), (req, res) => {
+router.get('/', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
+  const isActive = req.query.inactive === '1' ? 0 : 1
   const clients = db.prepare(`
     SELECT c.*, (SELECT COUNT(*) FROM tasks WHERE client_id = c.id AND is_active = 1) as task_count,
     (SELECT COUNT(*) FROM users WHERE client_id = c.id) as user_count
-    FROM clients c WHERE c.is_active = 1 ORDER BY c.name
-  `).all()
+    FROM clients c WHERE c.is_active = ? ORDER BY c.name
+  `).all(isActive)
   res.json({ clients })
 })
 
 router.post('/', requireRole('dono', 'gerente'), (req, res) => {
-  const { name, contact_name, contact_email, contact_phone, logo_url, drive_folder, password } = req.body
+  const { name, contact_name, contact_email, contact_phone, logo_url, drive_folder, password,
+          cnpj, razao_social, segmento, website, instagram, cidade, estado, observacoes,
+          monthly_fee, payment_day, contrato_inicio } = req.body
   if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
   if (!contact_email) return res.status(400).json({ error: 'Email obrigatorio' })
   if (!password) return res.status(400).json({ error: 'Senha obrigatoria' })
@@ -29,7 +32,16 @@ router.post('/', requireRole('dono', 'gerente'), (req, res) => {
 
   // Create client with onboard token
   const onboard_token = randomBytes(16).toString('hex')
-  const result = db.prepare('INSERT INTO clients (name, slug, contact_name, contact_email, contact_phone, logo_url, drive_folder, onboard_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(name, slug, contact_name || name, contact_email, contact_phone, logo_url, drive_folder || null, onboard_token)
+  const result = db.prepare(`
+    INSERT INTO clients (name, slug, contact_name, contact_email, contact_phone, logo_url, drive_folder, onboard_token,
+                         cnpj, razao_social, segmento, website, instagram, cidade, estado, observacoes,
+                         monthly_fee, payment_day, contrato_inicio)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    name, slug, contact_name || name, contact_email, contact_phone, logo_url, drive_folder || null, onboard_token,
+    cnpj || null, razao_social || null, segmento || null, website || null, instagram || null, cidade || null, estado || null, observacoes || null,
+    monthly_fee || 0, payment_day || 10, contrato_inicio || null
+  )
   const clientId = result.lastInsertRowid
 
   // Auto-create user with role 'cliente'
@@ -48,7 +60,8 @@ router.get('/:id', requireRole('dono', 'gerente'), (req, res) => {
 })
 
 router.put('/:id', requireRole('dono', 'gerente'), (req, res) => {
-  const { name, contact_name, contact_email, contact_phone, logo_url, drive_folder, is_active, monthly_fee, payment_day } = req.body
+  const { name, contact_name, contact_email, contact_phone, logo_url, drive_folder, is_active, monthly_fee, payment_day,
+          cnpj, razao_social, segmento, website, instagram, cidade, estado, observacoes, contrato_inicio } = req.body
   const sets = []; const params = []
   if (name !== undefined) { sets.push('name = ?'); params.push(name) }
   if (contact_name !== undefined) { sets.push('contact_name = ?'); params.push(contact_name) }
@@ -56,9 +69,35 @@ router.put('/:id', requireRole('dono', 'gerente'), (req, res) => {
   if (contact_phone !== undefined) { sets.push('contact_phone = ?'); params.push(contact_phone) }
   if (logo_url !== undefined) { sets.push('logo_url = ?'); params.push(logo_url) }
   if (drive_folder !== undefined) { sets.push('drive_folder = ?'); params.push(drive_folder) }
-  if (is_active !== undefined) { sets.push('is_active = ?'); params.push(is_active ? 1 : 0) }
+  if (is_active !== undefined) {
+    sets.push('is_active = ?'); params.push(is_active ? 1 : 0)
+    // Reativar: limpa inactivated_at
+    // Desativar: usa data explicita do body se enviada (mes de saida customizado),
+    //   senao mantem a atual ou usa "agora"
+    if (is_active) {
+      sets.push('inactivated_at = NULL')
+    } else if (req.body.inactivated_at) {
+      sets.push('inactivated_at = ?'); params.push(req.body.inactivated_at)
+    } else {
+      sets.push("inactivated_at = COALESCE(inactivated_at, datetime('now', '-3 hours'))")
+    }
+  }
   if (monthly_fee !== undefined) { sets.push('monthly_fee = ?'); params.push(monthly_fee) }
   if (payment_day !== undefined) { sets.push('payment_day = ?'); params.push(payment_day) }
+  if (cnpj !== undefined) { sets.push('cnpj = ?'); params.push(cnpj || null) }
+  if (razao_social !== undefined) { sets.push('razao_social = ?'); params.push(razao_social || null) }
+  if (segmento !== undefined) { sets.push('segmento = ?'); params.push(segmento || null) }
+  if (website !== undefined) { sets.push('website = ?'); params.push(website || null) }
+  if (instagram !== undefined) { sets.push('instagram = ?'); params.push(instagram || null) }
+  if (cidade !== undefined) { sets.push('cidade = ?'); params.push(cidade || null) }
+  if (estado !== undefined) { sets.push('estado = ?'); params.push(estado || null) }
+  if (observacoes !== undefined) { sets.push('observacoes = ?'); params.push(observacoes || null) }
+  if (contrato_inicio !== undefined) { sets.push('contrato_inicio = ?'); params.push(contrato_inicio || null) }
+  if (req.body.core_client_name !== undefined) { sets.push('core_client_name = ?'); params.push(req.body.core_client_name || null) }
+  if (req.body.core_meta_account_id !== undefined) { sets.push('core_meta_account_id = ?'); params.push(req.body.core_meta_account_id || null) }
+  if (req.body.core_ig_page_id !== undefined) { sets.push('core_ig_page_id = ?'); params.push(req.body.core_ig_page_id || null) }
+  if (req.body.core_gads_customer_id !== undefined) { sets.push('core_gads_customer_id = ?'); params.push(req.body.core_gads_customer_id || null) }
+  if (req.body.core_ga4_property_id !== undefined) { sets.push('core_ga4_property_id = ?'); params.push(req.body.core_ga4_property_id || null) }
   if (!sets.length) return res.status(400).json({ error: 'Nada pra atualizar' })
   sets.push("updated_at = datetime('now', '-3 hours')"); params.push(req.params.id)
   db.prepare(`UPDATE clients SET ${sets.join(', ')} WHERE id = ?`).run(...params)
@@ -69,6 +108,20 @@ router.put('/:id', requireRole('dono', 'gerente'), (req, res) => {
 router.get('/:id/credentials', requireRole('dono', 'gerente'), (req, res) => {
   const credentials = db.prepare('SELECT * FROM client_credentials WHERE client_id = ? ORDER BY platform').all(req.params.id)
   res.json({ credentials })
+})
+
+// Approval token — gerar (revoga o anterior) ou revogar
+router.post('/:id/approval-token', requireRole('dono', 'gerente'), (req, res) => {
+  const client = db.prepare('SELECT id FROM clients WHERE id = ?').get(req.params.id)
+  if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' })
+  const token = randomBytes(20).toString('hex')
+  db.prepare('UPDATE clients SET approval_token = ? WHERE id = ?').run(token, req.params.id)
+  res.json({ approval_token: token })
+})
+
+router.delete('/:id/approval-token', requireRole('dono', 'gerente'), (req, res) => {
+  db.prepare('UPDATE clients SET approval_token = NULL WHERE id = ?').run(req.params.id)
+  res.json({ ok: true })
 })
 
 router.post('/:id/credentials', requireRole('dono', 'gerente'), (req, res) => {

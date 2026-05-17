@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken'
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dros-hub-secret-2026'
+const JWT_SECRET = process.env.JWT_SECRET || 'sheraos-hub-secret'
 
 export function authenticate(req, res, next) {
   const header = req.headers.authorization

@@ -301,10 +301,33 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN approval_text TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN publish_date TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN publish_objective TEXT") } catch {}
 try { db.exec("ALTER TABLE clients ADD COLUMN onboard_token TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN approval_token TEXT") } catch {}
+try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_approval_token ON clients(approval_token)") } catch {}
 try { db.exec("ALTER TABLE client_services ADD COLUMN config TEXT DEFAULT '{}'") } catch {}
 try { db.exec("ALTER TABLE services ADD COLUMN fields TEXT DEFAULT '[]'") } catch {}
 try { db.exec("ALTER TABLE clients ADD COLUMN monthly_fee REAL DEFAULT 0") } catch {}
 try { db.exec("ALTER TABLE clients ADD COLUMN payment_day INTEGER DEFAULT 10") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN cnpj TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN razao_social TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN segmento TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN website TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN instagram TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN cidade TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN estado TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN observacoes TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN contrato_inicio TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN inactivated_at TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN core_client_name TEXT") } catch {}
+// IDs explicitos por plataforma — usados pra filtrar precisamente em /api/performance/*.
+// core_client_name continua sendo o "hint" textual (CRM lookup, GA4 properties, Kiwify check).
+try { db.exec("ALTER TABLE clients ADD COLUMN core_meta_account_id TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN core_ig_page_id TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN core_gads_customer_id TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN core_ga4_property_id TEXT") } catch {}
+try { db.exec("ALTER TABLE payments ADD COLUMN bank TEXT") } catch {}
+try { db.exec("ALTER TABLE expenses ADD COLUMN bank TEXT") } catch {}
+try { db.exec("ALTER TABLE extra_revenue ADD COLUMN bank TEXT") } catch {}
+try { db.exec("ALTER TABLE installments ADD COLUMN bank TEXT") } catch {}
 // Editorial/Anuncios task-mae support (hardcoded workflows)
 try { db.exec("ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT 'normal'") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN num_posts INTEGER") } catch {}
@@ -317,6 +340,8 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN subtask_kind TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN meeting_datetime TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN requested_by_client INTEGER DEFAULT 0") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN changes_requested TEXT") } catch {}
+// Multi-arquivo pra aprovacao (carrossel) — JSON array de strings. approval_link fica como fallback/compat.
+try { db.exec("ALTER TABLE tasks ADD COLUMN approval_files TEXT") } catch {}
 // Seed solicitacao_pendente stage for existing DBs
 try {
   const exists = db.prepare("SELECT id FROM pipeline_stages WHERE slug = 'solicitacao_pendente'").get()
