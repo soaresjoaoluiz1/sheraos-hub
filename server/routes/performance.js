@@ -1789,23 +1789,50 @@ router.get('/kiwify/products', async (req, res) => {
 // =====================================================================
 // OVERVIEW (Aggregated from all sources)
 // =====================================================================
-router.get('/overview/:accountId', async (req, res) => {
-  try {
-    const { accountId } = req.params
-    const accountName = resolveAccountName(req)
-    const days = parseInt(req.query.days || '7')
-    const { since, until } = req.query
-    const ranges = getDateRanges(days, since, until)
-    const promises = {}
+// =====================================================================
+// Cache em memoria do overview — TTL 5min
+// Compartilhado entre /overview/:accountId e /all-clients-overview.
+// =====================================================================
+const overviewCache = new Map()
+const OVERVIEW_TTL_MS = 5 * 60 * 1000
 
-    promises.meta = (async () => {
+function overviewCacheKey(accountId, accountName, days, since, until) {
+  return `${accountId}|${(accountName || '').toLowerCase()}|${days}|${since || ''}|${until || ''}`
+}
+
+async function buildOverviewCached(opts) {
+  const k = overviewCacheKey(opts.accountId, opts.accountName, opts.days, opts.since, opts.until)
+  const cached = overviewCache.get(k)
+  if (cached && Date.now() - cached.ts < OVERVIEW_TTL_MS) return cached.data
+  const data = await buildOverview(opts)
+  overviewCache.set(k, { ts: Date.now(), data })
+  // Limpa caches antigos pra nao vazar memoria
+  if (overviewCache.size > 200) {
+    const cutoff = Date.now() - OVERVIEW_TTL_MS
+    for (const [key, val] of overviewCache.entries()) {
+      if (val.ts < cutoff) overviewCache.delete(key)
+    }
+  }
+  return data
+}
+
+// Funcao pura que agrega Meta + GAds + GA4 + IG + Kiwify + CRM pra uma conta.
+// Retorna o JSON do overview (sources, totals, alerts, metaDaily).
+// Reusada por /overview/:accountId (single client) e /all-clients-overview (loop).
+async function buildOverview({ accountId, accountName, days, since, until }) {
+  const ranges = getDateRanges(days, since, until)
+  const promises = {}
+
+  promises.meta = (async () => {
       try {
-        const fields = 'spend,impressions,clicks,cpc,ctr,reach,actions,cost_per_action_type,action_values'
+        // NOTA: 'video_3_sec_watched_actions' foi REMOVIDO da Meta API v21 — pedia esse field e o request inteiro falhava com erro #100. Hook Rate agora vem de actions[action_type=video_view].
+        const fields = 'spend,impressions,clicks,cpc,ctr,cpm,reach,frequency,actions,cost_per_action_type,action_values'
         const [current, previous, campaigns] = await Promise.all([
-          metaFetch(`/${accountId}/insights`, { fields, time_range: JSON.stringify(ranges.current), limit: '500' }).catch(() => ({ data: [] })),
-          metaFetch(`/${accountId}/insights`, { fields, time_range: JSON.stringify(ranges.previous), limit: '500' }).catch(() => ({ data: [] })),
+          metaFetch(`/${accountId}/insights`, { fields, time_range: JSON.stringify(ranges.current), limit: '500' }).catch(err => { console.log(`[Performance/Meta] FAIL current account=${accountId}:`, err.message); return { data: [] } }),
+          metaFetch(`/${accountId}/insights`, { fields, time_range: JSON.stringify(ranges.previous), limit: '500' }).catch(err => { console.log(`[Performance/Meta] FAIL previous account=${accountId}:`, err.message); return { data: [] } }),
           metaFetch(`/${accountId}/insights`, { fields: 'campaign_name,actions', time_range: JSON.stringify(ranges.current), level: 'campaign', limit: '500' }).catch(() => ({ data: [] })),
         ])
+        console.log(`[Performance/Meta] RESULT account=${accountId} currentRows=${(current.data || []).length} previousRows=${(previous.data || []).length}`)
         let campaignLeads = 0, campaignMessaging = 0
         for (const camp of (campaigns.data || [])) {
           const getAct = (type) => { const a = camp.actions?.find(x => x.action_type === type); return a ? parseFloat(a.value) : 0 }
@@ -2030,22 +2057,53 @@ router.get('/overview/:accountId', async (req, res) => {
     if (results.meta?.available && results.meta.current) {
       const mc = results.meta.current
       const mp = results.meta.previous
+      // Debug: loga as chaves que o Meta API retornou pra esse account
+      console.log(`[Performance/Meta] account=${accountId} fields presentes:`, Object.keys(mc || {}).join(','))
       const getAct = (actions, type) => { const a = actions?.find(x => x.action_type === type); return a ? parseFloat(a.value) : 0 }
       const metaSpend = parseFloat(mc.spend || 0)
       const prevMetaSpend = mp ? parseFloat(mp.spend || 0) : 0
+      const metaImpressions = parseInt(mc.impressions || 0)
+      const prevMetaImpressions = mp ? parseInt(mp.impressions || 0) : 0
+      const metaClicks = parseInt(mc.clicks || 0)
+      const prevMetaClicks = mp ? parseInt(mp.clicks || 0) : 0
+      const metaReach = parseInt(mc.reach || 0)
+      const prevMetaReach = mp ? parseInt(mp.reach || 0) : 0
       const metaLeads = results.meta.campaignLeads
       const metaMessaging = results.meta.campaignMessaging
       const metaPurchases = getAct(mc.actions, 'purchase')
       const metaLinkClicks = getAct(mc.actions, 'link_click')
+      const prevMetaLinkClicks = mp ? getAct(mp.actions, 'link_click') : 0
       const prevLeads = mp ? (getAct(mp.actions, 'lead') || getAct(mp.actions, 'onsite_conversion.lead_grouped')) : 0
       const prevMessaging = mp ? getAct(mp.actions, 'onsite_conversion.messaging_conversation_started_7d') : 0
+      // Video 3s views (pra hook rate) — agora vem do array actions
+      const video3s = getAct(mc.actions, 'video_view')
+      const prevVideo3s = mp ? getAct(mp.actions, 'video_view') : 0
+      // Metricas: prefere field direto da Meta API quando existe (cpm, ctr, frequency),
+      // calcula localmente apenas quando o Meta nao retorna (ctrLink, hookRate).
+      const cpm = parseFloat(mc.cpm || 0) || (metaImpressions > 0 ? (metaSpend / metaImpressions) * 1000 : 0)
+      const prevCpm = mp ? (parseFloat(mp.cpm || 0) || (prevMetaImpressions > 0 ? (prevMetaSpend / prevMetaImpressions) * 1000 : 0)) : 0
+      const ctr = parseFloat(mc.ctr || 0) || (metaImpressions > 0 ? (metaClicks / metaImpressions) * 100 : 0)
+      const prevCtr = mp ? (parseFloat(mp.ctr || 0) || (prevMetaImpressions > 0 ? (prevMetaClicks / prevMetaImpressions) * 100 : 0)) : 0
+      const ctrLink = metaImpressions > 0 ? (metaLinkClicks / metaImpressions) * 100 : 0
+      const prevCtrLink = prevMetaImpressions > 0 ? (prevMetaLinkClicks / prevMetaImpressions) * 100 : 0
+      const hookRate = metaImpressions > 0 && video3s > 0 ? (video3s / metaImpressions) * 100 : 0
+      const prevHookRate = prevMetaImpressions > 0 && prevVideo3s > 0 ? (prevVideo3s / prevMetaImpressions) * 100 : 0
+      const frequency = parseFloat(mc.frequency || 0)
+      const prevFrequency = mp ? parseFloat(mp.frequency || 0) : 0
       overview.sources.meta = {
         spend: metaSpend, prevSpend: prevMetaSpend,
-        impressions: parseInt(mc.impressions || 0), reach: parseInt(mc.reach || 0),
-        clicks: parseInt(mc.clicks || 0),
+        impressions: metaImpressions, prevImpressions: prevMetaImpressions,
+        reach: metaReach, prevReach: prevMetaReach,
+        clicks: metaClicks, prevClicks: prevMetaClicks,
         leads: metaLeads, prevLeads,
         messaging: metaMessaging, prevMessaging,
-        purchases: metaPurchases, linkClicks: metaLinkClicks,
+        purchases: metaPurchases, linkClicks: metaLinkClicks, prevLinkClicks: prevMetaLinkClicks,
+        // Metricas calculadas com deltas
+        cpm, prevCpm,
+        ctr, prevCtr,
+        ctrLink, prevCtrLink,
+        hookRate, prevHookRate,
+        frequency, prevFrequency,
       }
     }
 
@@ -2128,9 +2186,71 @@ router.get('/overview/:accountId', async (req, res) => {
     overview.alerts = []
     if (overview.sources.ga4?.bounceRate > 70) overview.alerts.push({ type: 'warning', text: `Taxa de rejeicao do site alta: ${overview.sources.ga4.bounceRate.toFixed(1)}%` })
 
+    return overview
+}
+
+// Handler /overview/:accountId — casca que usa buildOverviewCached
+router.get('/overview/:accountId', async (req, res) => {
+  try {
+    const accountName = resolveAccountName(req)
+    const days = parseInt(req.query.days || '7')
+    const { since, until } = req.query
+    const overview = await buildOverviewCached({ accountId: req.params.accountId, accountName, days, since, until })
     res.json(overview)
   } catch (err) {
     console.error('[Performance/Overview]', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Agregado de TODOS os clientes vinculados — admin only (dono/gerente)
+// Itera clients ativos com pelo menos 1 vinculo, chama buildOverviewCached em paralelo,
+// retorna array com { client, overview, error }. Falha de um nao derruba os outros.
+router.get('/all-clients-overview', async (req, res) => {
+  if (!req.user || !['dono', 'gerente'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Forbidden' })
+  }
+  try {
+    const days = parseInt(req.query.days || '7')
+    // Limpa o cache antes de processar (forca recalculo fresh enquanto debugamos
+    // metricas Meta que estavam vindo zeradas). Reativar cache quando estabilizar.
+    overviewCache.clear()
+    const clients = db.prepare(`
+      SELECT id, name, logo_url,
+             core_client_name, core_meta_account_id, core_gads_customer_id,
+             core_ig_page_id, core_ga4_property_id
+      FROM clients
+      WHERE is_active = 1
+        AND (core_meta_account_id IS NOT NULL
+          OR core_gads_customer_id IS NOT NULL
+          OR core_ga4_property_id IS NOT NULL
+          OR core_ig_page_id IS NOT NULL
+          OR core_client_name IS NOT NULL)
+      ORDER BY name
+    `).all()
+
+    const items = await Promise.all(clients.map(async (c) => {
+      const clientInfo = {
+        id: c.id, name: c.name, logo_url: c.logo_url,
+        hasMeta: !!c.core_meta_account_id,
+        hasGads: !!c.core_gads_customer_id,
+        hasGA4: !!c.core_ga4_property_id,
+        hasIG: !!c.core_ig_page_id,
+      }
+      const accountId = c.core_meta_account_id || ''
+      const accountName = (c.core_client_name || c.name || '').trim()
+      try {
+        const overview = await buildOverviewCached({ accountId, accountName, days })
+        return { client: clientInfo, overview, error: null }
+      } catch (err) {
+        console.error(`[all-clients-overview] cliente ${c.id} (${c.name}):`, err.message)
+        return { client: clientInfo, overview: null, error: err.message || 'erro desconhecido' }
+      }
+    }))
+
+    res.json({ days, clients: items })
+  } catch (err) {
+    console.error('[all-clients-overview]', err.message)
     res.status(500).json({ error: err.message })
   }
 })

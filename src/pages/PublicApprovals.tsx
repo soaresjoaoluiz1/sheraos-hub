@@ -110,7 +110,7 @@ export default function PublicApprovals() {
       <div style={{ maxWidth: 720, margin: '0 auto' }}>
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <img src="/hub/icon.png" alt="Sheraos" style={{ height: 70, marginBottom: 12 }} />
+          <img src="/hub/logo-dros.png" alt="Dros" style={{ height: 56, marginBottom: 12 }} />
           <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Olá, {data.client.name}!</h1>
           <p style={{ color: '#9B96B0', fontSize: 14 }}>{data.tasks.length === 0 ? 'Nenhuma aprovação pendente no momento.' : `Você tem ${data.tasks.length} ${data.tasks.length === 1 ? 'tarefa' : 'tarefas'} aguardando sua aprovação.`}</p>
         </div>

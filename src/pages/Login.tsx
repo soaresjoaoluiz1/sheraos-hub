@@ -20,7 +20,7 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 20 }}>
-          <img src="/hub/icon.png" alt="Sheraos" style={{ height: 90, marginBottom: 16 }} />
+          <img src="/hub/icon.png" alt="Dros" style={{ height: 80, marginBottom: 14 }} />
           <h1 style={{ margin: 0 }}>Sheraos Hub</h1>
           <div className="subtitle" style={{ marginTop: 4 }}>Gestao de Projetos & Aprovacoes</div>
         </div>

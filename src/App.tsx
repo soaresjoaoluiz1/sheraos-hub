@@ -9,6 +9,7 @@ import Tasks from './pages/Tasks'
 import TaskDetail from './pages/TaskDetail'
 import Approvals from './pages/Approvals'
 import Performance from './pages/Performance'
+import PerformanceOverview from './pages/PerformanceOverview'
 import Clients from './pages/Clients'
 import ClientDetail from './pages/ClientDetail'
 import Team from './pages/Team'
@@ -52,6 +53,7 @@ function AppRoutes() {
             {(isDono || isGerente || isFunc) && <Route path="/gravacoes" element={<Gravacoes />} />}
             {(isDono || isGerente || isCliente) && <Route path="/approvals" element={<Approvals />} />}
             {isCliente && <Route path="/performance" element={<Performance />} />}
+            {(isDono || isGerente) && <Route path="/performance" element={<PerformanceOverview />} />}
             {(isDono || isGerente) && <>
               <Route path="/clients" element={<Clients />} />
               <Route path="/clients/:id" element={<ClientDetail />} />

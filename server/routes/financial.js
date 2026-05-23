@@ -13,7 +13,7 @@ router.get('/overview', (req, res) => {
   if (!month || !/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'month param required (YYYY-MM)' })
 
   // Lista todos: ativos sempre, inativos so ate a data de inativacao
-  const clients = db.prepare('SELECT id, name, monthly_fee, payment_day, is_active, inactivated_at FROM clients ORDER BY name').all()
+  const clients = db.prepare('SELECT id, name, monthly_fee, payment_day, is_active, inactivated_at, contrato_inicio FROM clients ORDER BY name').all()
 
   // Get all payments for this month
   const payments = db.prepare('SELECT * FROM payments WHERE reference_month = ?').all(month)
@@ -52,6 +52,13 @@ router.get('/overview', (req, res) => {
         days_late: 0, penalty: 0, total_due: fee, is_active: c.is_active,
         bank: payment.bank || null
       }
+    }
+
+    // Cliente cujo contrato inicia DEPOIS do mes requisitado: nao aparece no financeiro
+    // (ex: contrato_inicio=2026-06, mes=2026-05 → nao deve gerar fatura)
+    if (c.contrato_inicio) {
+      const startMonth = String(c.contrato_inicio).slice(0, 7) // 'YYYY-MM'
+      if (startMonth > monthKey) return null
     }
 
     // Cliente inativo sem pagamento: so mostra ate o mes da inativacao

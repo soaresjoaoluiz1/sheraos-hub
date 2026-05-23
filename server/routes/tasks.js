@@ -269,12 +269,18 @@ router.get('/gravacoes/calendar', (req, res) => {
 // Create generic mae task — sem subtarefas auto-criadas (option C)
 // Subtarefas sao adicionadas manualmente via POST /:id/subtasks
 router.post('/mae', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
-  const { client_id, title, description, due_date, category_id, department_id, priority } = req.body
+  const { client_id, title, description, due_date, category_id, department_id, priority, drive_link, drive_link_raw, approval_link, approval_files, approval_text, publish_date, publish_objective, assigned_to } = req.body
   if (!client_id || !title) return res.status(400).json({ error: 'client_id e title obrigatorios' })
+  const assigneeIds = Array.isArray(assigned_to) ? assigned_to.filter(Boolean).map(Number) : (assigned_to ? [Number(assigned_to)] : [])
+  const primaryAssignee = assigneeIds[0] || null
+  const filesArr = Array.isArray(approval_files) ? approval_files.filter(s => s && String(s).trim()) : []
+  const filesJson = filesArr.length > 0 ? JSON.stringify(filesArr) : null
+  const effectiveApprovalLink = filesArr.length > 0 ? filesArr[0] : (approval_link || null)
   const result = db.prepare(`
-    INSERT INTO tasks (client_id, category_id, department_id, title, description, priority, due_date, created_by, stage, task_type)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'backlog', 'mae')
-  `).run(client_id, category_id || null, department_id || null, title, description || null, priority || 'normal', due_date || null, req.user.id)
+    INSERT INTO tasks (client_id, category_id, department_id, title, description, priority, due_date, created_by, stage, task_type, assigned_to, drive_link, drive_link_raw, approval_link, approval_files, approval_text, publish_date, publish_objective)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'backlog', 'mae', ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(client_id, category_id || null, department_id || null, title, description || null, priority || 'normal', due_date || null, req.user.id, primaryAssignee, drive_link || null, drive_link_raw || null, effectiveApprovalLink, filesJson, approval_text || null, publish_date || null, publish_objective || null)
+  setAssignees(result.lastInsertRowid, assigneeIds)
   db.prepare('INSERT INTO task_history (task_id, to_stage, user_id) VALUES (?, ?, ?)').run(result.lastInsertRowid, 'backlog', req.user.id)
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid)
   broadcastSSE(task.client_id, 'task:created', task)
@@ -286,16 +292,19 @@ router.post('/:id/subtasks', requireRole('dono', 'gerente', 'funcionario'), (req
   const parent = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id)
   if (!parent) return res.status(404).json({ error: 'Tarefa-mae nao encontrada' })
   if (!parent.task_type || parent.task_type === 'normal') return res.status(400).json({ error: 'Tarefa nao e mae — nao aceita subtarefas' })
-  const { title, description, due_date, category_id, department_id, priority, assigned_to } = req.body
+  const { title, description, due_date, category_id, department_id, priority, assigned_to, drive_link, drive_link_raw, approval_link, approval_files, approval_text, publish_date, publish_objective } = req.body
   if (!title) return res.status(400).json({ error: 'title obrigatorio' })
+  const assigneeIds = Array.isArray(assigned_to) ? assigned_to.filter(Boolean).map(Number) : (assigned_to ? [Number(assigned_to)] : [])
+  const primaryAssignee = assigneeIds[0] || null
+  const filesArr = Array.isArray(approval_files) ? approval_files.filter(s => s && String(s).trim()) : []
+  const filesJson = filesArr.length > 0 ? JSON.stringify(filesArr) : null
+  const effectiveApprovalLink = filesArr.length > 0 ? filesArr[0] : (approval_link || null)
   const maxPos = db.prepare('SELECT COALESCE(MAX(subtask_position), 0) as m FROM tasks WHERE parent_task_id = ?').get(parent.id).m
   const result = db.prepare(`
-    INSERT INTO tasks (client_id, category_id, department_id, title, description, priority, due_date, created_by, stage, task_type, parent_task_id, subtask_position, assigned_to)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'backlog', 'normal', ?, ?, ?)
-  `).run(parent.client_id, category_id || null, department_id || null, title, description || null, priority || 'normal', due_date || null, req.user.id, parent.id, maxPos + 1, assigned_to || null)
-  if (assigned_to) {
-    db.prepare('INSERT OR IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)').run(result.lastInsertRowid, assigned_to)
-  }
+    INSERT INTO tasks (client_id, category_id, department_id, title, description, priority, due_date, created_by, stage, task_type, parent_task_id, subtask_position, assigned_to, drive_link, drive_link_raw, approval_link, approval_files, approval_text, publish_date, publish_objective)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'backlog', 'normal', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(parent.client_id, category_id || null, department_id || null, title, description || null, priority || 'normal', due_date || null, req.user.id, parent.id, maxPos + 1, primaryAssignee, drive_link || null, drive_link_raw || null, effectiveApprovalLink, filesJson, approval_text || null, publish_date || null, publish_objective || null)
+  setAssignees(result.lastInsertRowid, assigneeIds)
   db.prepare('INSERT INTO task_history (task_id, to_stage, user_id) VALUES (?, ?, ?)').run(result.lastInsertRowid, 'backlog', req.user.id)
   const subtask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid)
   broadcastSSE(parent.client_id, 'task:created', subtask)

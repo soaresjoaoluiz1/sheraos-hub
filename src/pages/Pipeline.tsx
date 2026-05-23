@@ -50,7 +50,9 @@ export default function Pipeline() {
   const [showNewMae, setShowNewMae] = useState(false)
   const [newEditorial, setNewEditorial] = useState({ client_id: '', month_label: '', num_posts: '8', num_videos: '4', due_date: '', category_id: '' })
   const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
-  const [newMae, setNewMae] = useState({ title: '', client_id: '', description: '', due_date: today, category_id: '', department_id: '', priority: 'normal' })
+  const [newMae, setNewMae] = useState({ title: '', client_id: '', description: '', due_date: today, category_id: '', department_id: '', priority: 'normal', assigned_to: [] as string[], drive_link: '', drive_link_raw: '', approval_link: '', approval_text: '', publish_date: '', publish_objective: '' })
+  const [newMaeIsCarrossel, setNewMaeIsCarrossel] = useState(false)
+  const [newMaeFiles, setNewMaeFiles] = useState<string[]>([''])
   const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: today, priority: 'normal', drive_link_raw: '', drive_link: '', approval_link: '', approval_text: '', publish_date: '', publish_objective: '', recording_date: '', recording_time: '' })
   const [newTaskIsCarrossel, setNewTaskIsCarrossel] = useState(false)
   const [newTaskFiles, setNewTaskFiles] = useState<string[]>([''])
@@ -108,6 +110,7 @@ export default function Pipeline() {
     if (!newMae.title || !newMae.client_id) return
     setSaving(true)
     try {
+      const approval_files = newMaeIsCarrossel ? newMaeFiles.filter(s => s && s.trim()) : (newMae.approval_link ? [newMae.approval_link] : [])
       await createMaeTask({
         client_id: +newMae.client_id,
         title: newMae.title,
@@ -116,9 +119,17 @@ export default function Pipeline() {
         category_id: newMae.category_id ? +newMae.category_id : undefined,
         department_id: newMae.department_id ? +newMae.department_id : undefined,
         priority: newMae.priority,
+        assigned_to: newMae.assigned_to.map(Number),
+        drive_link: newMae.drive_link || undefined,
+        drive_link_raw: newMae.drive_link_raw || undefined,
+        approval_files,
+        approval_text: newMae.approval_text || undefined,
+        publish_date: newMae.publish_date || undefined,
+        publish_objective: newMae.publish_objective || undefined,
       })
       setShowNewMae(false)
-      setNewMae({ title: '', client_id: '', description: '', due_date: today, category_id: '', department_id: '', priority: 'normal' })
+      setNewMae({ title: '', client_id: '', description: '', due_date: today, category_id: '', department_id: '', priority: 'normal', assigned_to: [], drive_link: '', drive_link_raw: '', approval_link: '', approval_text: '', publish_date: '', publish_objective: '' })
+      setNewMaeIsCarrossel(false); setNewMaeFiles([''])
       loadData()
       toast('Tarefa Mae criada — abra ela e adicione as subtarefas')
     } catch (err: any) { toast(err.message || 'Erro ao criar tarefa mae', 'error') }
@@ -472,21 +483,67 @@ export default function Pipeline() {
 
       {/* New Mae generica modal */}
       {showNewMae && (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowNewMae(false))() }}><div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowNewMae(false))() }}><div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
           <h2><Layers size={18} style={{ marginRight: 8, verticalAlign: 'middle', color: '#FFB300' }} />Nova Tarefa Mae</h2>
           <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Cria uma tarefa-mae vazia. Voce adiciona as subtarefas manualmente depois. Quando todas concluirem, a mae auto-conclui.</p>
-          <div className="form-row">
-            <div className="form-group"><label>Titulo *</label><input className="input" value={newMae.title} onChange={e => setNewMae(p => ({ ...p, title: e.target.value }))} placeholder="Ex: Campanha Black Friday 2026" /></div>
-            <div className="form-group"><label>Cliente *</label><select className="select" value={newMae.client_id} onChange={e => setNewMae(p => ({ ...p, client_id: e.target.value }))}><option value="">Selecione</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-          </div>
+          <div className="form-group"><label>Titulo *</label><input className="input" value={newMae.title} onChange={e => setNewMae(p => ({ ...p, title: e.target.value }))} placeholder="Ex: Campanha Black Friday 2026" /></div>
           <div className="form-group"><label>Descricao</label><textarea className="input" rows={3} value={newMae.description} onChange={e => setNewMae(p => ({ ...p, description: e.target.value }))} /></div>
+          <div className="form-row">
+            <div className="form-group"><label>Cliente *</label><select className="select" value={newMae.client_id} onChange={e => setNewMae(p => ({ ...p, client_id: e.target.value }))}><option value="">Selecione</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+            <div className="form-group"><label>Categoria</label><select className="select" value={newMae.category_id} onChange={e => setNewMae(p => ({ ...p, category_id: e.target.value }))}><option value="">Nenhuma</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+          </div>
+          <div className="form-row">
+            <div className="form-group"><label>Departamento</label><select className="select" value={newMae.department_id} onChange={e => setNewMae(p => ({ ...p, department_id: e.target.value }))}><option value="">Nenhum</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+            <div className="form-group">
+              <label>Responsaveis</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {allUsers.filter(u => u.role !== 'cliente').map(u => {
+                  const sel = newMae.assigned_to.includes(String(u.id))
+                  return <button type="button" key={u.id} onClick={() => setNewMae(p => ({ ...p, assigned_to: sel ? p.assigned_to.filter(x => x !== String(u.id)) : [...p.assigned_to, String(u.id)] }))} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${sel ? '#34C759' : 'rgba(255,255,255,0.08)'}`, background: sel ? 'rgba(52,199,89,0.12)' : 'transparent', color: sel ? '#34C759' : '#9B96B0', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>{sel ? '✓ ' : ''}{u.name}</button>
+                })}
+              </div>
+            </div>
+          </div>
           <div className="form-row">
             <div className="form-group"><label>Prazo</label><input className="input" type="date" value={newMae.due_date} onChange={e => setNewMae(p => ({ ...p, due_date: e.target.value }))} /></div>
             <div className="form-group"><label>Prioridade</label><select className="select" value={newMae.priority} onChange={e => setNewMae(p => ({ ...p, priority: e.target.value }))}><option value="baixa">Baixa</option><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></div>
           </div>
           <div className="form-row">
-            <div className="form-group"><label>Departamento</label><select className="select" value={newMae.department_id} onChange={e => setNewMae(p => ({ ...p, department_id: e.target.value }))}><option value="">Nenhum</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
-            <div className="form-group"><label>Categoria</label><select className="select" value={newMae.category_id} onChange={e => setNewMae(p => ({ ...p, category_id: e.target.value }))}><option value="">Nenhuma</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+            <div className="form-group"><label>Link Drive (Arquivo Bruto)</label><input className="input" value={newMae.drive_link_raw} onChange={e => setNewMae(p => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
+            <div className="form-group"><label>Link Drive (Arquivo Pronto)</label><input className="input" value={newMae.drive_link} onChange={e => setNewMae(p => ({ ...p, drive_link: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
+          </div>
+          <div style={{ padding: '14px 16px', background: 'rgba(245,166,35,0.04)', border: '1px solid rgba(245,166,35,0.12)', borderRadius: 10, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Conteudo para Aprovacao (opcional)</div>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#A8A3B8', cursor: 'pointer' }}>
+                <input type="checkbox" checked={newMaeIsCarrossel} onChange={e => {
+                  const checked = e.target.checked
+                  if (checked) { setNewMaeIsCarrossel(true); setNewMaeFiles(newMae.approval_link ? [newMae.approval_link] : ['']) }
+                  else { setNewMaeIsCarrossel(false); setNewMae(p => ({ ...p, approval_link: newMaeFiles[0] || '' })) }
+                }} style={{ accentColor: '#FFB300' }} />
+                Carrossel (varios arquivos)
+              </label>
+            </div>
+            {newMaeIsCarrossel ? (
+              <div className="form-group">
+                <label>Arquivos do carrossel</label>
+                {newMaeFiles.map((url, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <span style={{ minWidth: 56, fontSize: 11, color: '#6B6580', fontWeight: 700 }}>Slide {idx + 1}</span>
+                    <input className="input" value={url} placeholder="Link do Drive (publico)" style={{ flex: 1 }} onChange={e => setNewMaeFiles(arr => arr.map((x, i) => i === idx ? e.target.value : x))} />
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setNewMaeFiles(arr => arr.filter((_, i) => i !== idx))} title="Remover" style={{ padding: '6px 10px' }}><X size={12} /></button>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setNewMaeFiles(arr => [...arr, ''])} style={{ marginTop: 4 }}><Plus size={12} /> Adicionar slide</button>
+              </div>
+            ) : (
+              <div className="form-group"><label>Link do arquivo finalizado</label><input className="input" value={newMae.approval_link} onChange={e => setNewMae(p => ({ ...p, approval_link: e.target.value }))} placeholder="Link do Drive — compartilhamento: qualquer pessoa com o link" /></div>
+            )}
+            <div className="form-group"><label>Texto / Legenda</label><textarea className="input" rows={3} value={newMae.approval_text} onChange={e => setNewMae(p => ({ ...p, approval_text: e.target.value }))} placeholder="Legenda do post, texto da publicacao..." /></div>
+            <div className="form-row">
+              <div className="form-group"><label>Data da Publicacao</label><input className="input" type="date" value={newMae.publish_date} onChange={e => setNewMae(p => ({ ...p, publish_date: e.target.value }))} /></div>
+              <div className="form-group"><label>Objetivo da Publicacao</label><input className="input" value={newMae.publish_objective} onChange={e => setNewMae(p => ({ ...p, publish_objective: e.target.value }))} placeholder="Ex: Gerar leads..." /></div>
+            </div>
           </div>
           <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNewMae(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreateMae} disabled={saving || !newMae.title || !newMae.client_id}>{saving ? 'Criando...' : 'Criar Tarefa Mae'}</button></div>
         </div></div>

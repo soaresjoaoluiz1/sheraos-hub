@@ -79,7 +79,7 @@ body { font-family: var(--font-body); background: var(--bg-primary); color: var(
 /* Sidebar */
 .sidebar { width: 250px; background: var(--bg-secondary); border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 .sidebar-header { padding: 20px 18px 14px; border-bottom: 1px solid var(--border-subtle); }
-.sidebar-logo { height: 42px; opacity: 0.9; }
+.sidebar-logo { height: 48px; opacity: 0.9; }
 .sidebar-subtitle { font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 2px; margin-top: 4px; font-weight: 700; }
 .sidebar-nav { flex: 1; padding: 10px 8px; display: flex; flex-direction: column; gap: 1px; }
 .nav-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: 13px; font-weight: 500; cursor: pointer; transition: var(--transition); text-decoration: none; border: none; background: none; width: 100%; text-align: left; }
@@ -99,7 +99,7 @@ body { font-family: var(--font-body); background: var(--bg-primary); color: var(
   .collapse-btn { display: flex; align-items: center; justify-content: center; }
   .sidebar.collapsed { width: 60px; }
   .sidebar.collapsed .sidebar-header { padding: 16px 10px 12px; justify-content: center; }
-  .sidebar.collapsed .sidebar-logo { height: 34px; }
+  .sidebar.collapsed .sidebar-logo { height: 32px; }
   .sidebar.collapsed .sidebar-nav { padding: 10px 4px; }
   .sidebar.collapsed .nav-item { justify-content: center; padding: 11px 0; gap: 0; overflow: hidden; font-size: 0; }
   .sidebar.collapsed .nav-item svg { font-size: initial; flex-shrink: 0; }
@@ -527,4 +527,107 @@ th.right, td.right { text-align: right; }
 }
 @media (max-width: 900px) {
   .metric-groups { grid-template-columns: 1fr; }
+}
+
+/* =========================================
+   PERFORMANCE OVERVIEW (admin) — grid de cards
+   ========================================= */
+.clients-perf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.client-perf-card {
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+  overflow: hidden;
+}
+.client-perf-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-medium);
+  box-shadow: var(--shadow-md);
+}
+.client-perf-card.error { opacity: 0.65 }
+.client-perf-card .card-header-row {
+  display: flex; gap: 10px; align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.client-logo-sm {
+  width: 36px; height: 36px; border-radius: 6px; object-fit: cover;
+  background: rgba(255,255,255,0.05);
+  flex-shrink: 0;
+}
+.client-logo-sm.placeholder {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary); font-weight: 700; font-size: 14px;
+  font-family: var(--font-heading);
+}
+.client-name {
+  font-weight: 600; font-size: 14px; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.platform-badges { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap }
+.platform-badges .badge {
+  font-size: 9px; padding: 2px 6px; border-radius: 3px;
+  background: rgba(255,255,255,0.06); color: var(--text-muted);
+  font-weight: 600; letter-spacing: 0.3px;
+}
+.platform-badges .badge.meta { background: rgba(24,119,242,0.15); color: #4f9cf2 }
+.platform-badges .badge.gads { background: rgba(66,133,244,0.15); color: #6aa6f5 }
+.platform-badges .badge.ga4  { background: rgba(155,89,182,0.15); color: #c39bda }
+.platform-badges .badge.ig   { background: rgba(225,48,108,0.15); color: #e8688f }
+.metric-stack { padding: 10px 14px }
+.metric-stack.meta-detail {
+  border-top: 1px solid var(--border-subtle);
+  background: rgba(24,119,242,0.03);
+}
+.metric-section-title {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #4f9cf2;
+  padding: 4px 0 6px;
+}
+.client-perf-card .metric-row {
+  display: grid; grid-template-columns: 1fr auto auto;
+  gap: 8px; align-items: center;
+  padding: 6px 0;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.client-perf-card .metric-row:last-child { border-bottom: none }
+.client-perf-card .metric-row-label { color: var(--text-muted) }
+.client-perf-card .metric-row-value { font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums }
+.metric-row-delta {
+  font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px;
+  min-width: 36px; text-align: center;
+}
+.metric-row-delta.pos { background: rgba(52,199,89,0.12); color: var(--positive) }
+.metric-row-delta.neg { background: rgba(255,107,107,0.12); color: var(--negative) }
+.card-sparkline {
+  padding: 0 8px 4px;
+  margin-top: -2px;
+}
+.card-open-hint {
+  display: flex; align-items: center; gap: 4px; justify-content: center;
+  padding: 8px 14px;
+  font-size: 10px; color: var(--text-muted);
+  border-top: 1px solid var(--border-subtle);
+  background: rgba(255,255,255,0.015);
+}
+
+/* Shimmer pra skeleton */
+.shimmer-line {
+  height: 12px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.04), rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+  background-size: 200% 100%;
+  animation: shimmerAnim 1.4s linear infinite;
+  border-radius: 4px;
+}
+@keyframes shimmerAnim {
+  0% { background-position: 200% 0 }
+  100% { background-position: -200% 0 }
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchClient, updateClient, fetchClientCredentials, createClientCredential, updateClientCredential, deleteClientCredential, fetchClientOnboard, fetchServices, fetchClientServices, updateClientServices, apiFetch, generateApprovalToken, revokeApprovalToken, type Client, type ClientCredential, type User as UserT, type Service, type ClientService } from '../lib/api'
 import { ArrowLeft, Building2, ExternalLink, Plus, Edit3, Save, X, Trash2, Eye, EyeOff, Key, Users, Lock, ClipboardCopy, FileText, CheckCircle, Briefcase, BarChart3 } from 'lucide-react'
 import CoreAccountSelect from '../components/CoreAccountSelect'
@@ -49,7 +49,11 @@ export default function ClientDetail() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState<any>({})
-  const [activeTab, setActiveTab] = useState<'info' | 'credentials' | 'users' | 'services' | 'onboard' | 'performance'>('info')
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState<'info' | 'credentials' | 'users' | 'services' | 'onboard' | 'performance'>(() => {
+    const t = searchParams.get('tab')
+    return (t === 'performance' || t === 'credentials' || t === 'users' || t === 'services' || t === 'onboard') ? t : 'info'
+  })
   const [clientUsers, setClientUsers] = useState<any[]>([])
   const [resetPassId, setResetPassId] = useState<number | null>(null)
   const [newPassword, setNewPassword] = useState('')

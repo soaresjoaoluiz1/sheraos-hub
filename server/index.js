@@ -61,7 +61,7 @@ app.get('/api/events', async (req, res) => {
   let user
   try {
     const jwtMod = await import('jsonwebtoken')
-    user = jwtMod.default.verify(token, process.env.JWT_SECRET || 'sheraos-hub-secret-trocar')
+    user = jwtMod.default.verify(token, process.env.JWT_SECRET || 'sheraos-hub-secret')
   } catch { return res.status(401).end() }
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' })
   res.write('data: {"type":"connected"}\n\n')

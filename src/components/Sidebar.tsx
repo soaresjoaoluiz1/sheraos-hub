@@ -45,7 +45,7 @@ export default function Sidebar() {
         <div className="sidebar-header">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div><img src="/hub/icon.png" alt="Sheraos" className="sidebar-logo" />{!collapsed && <div className="sidebar-subtitle">HUB</div>}</div>
+              <div><img src="/hub/icon.png" alt="Dros" className="sidebar-logo" />{!collapsed && <div className="sidebar-subtitle">HUB</div>}</div>
               {!collapsed && <NotificationBell />}
             </div>
             <button className="sidebar-close-btn" onClick={close}><X size={18} /></button>
@@ -77,6 +77,11 @@ export default function Sidebar() {
             </NavLink>
           )}
           {isCliente && (
+            <NavLink to="/performance" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}>
+              <BarChart3 size={16} /> Performance
+            </NavLink>
+          )}
+          {(isDono || isGerente) && (
             <NavLink to="/performance" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}>
               <BarChart3 size={16} /> Performance
             </NavLink>

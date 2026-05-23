@@ -43,7 +43,9 @@ export default function TaskDetail() {
   // Subtarefa modal (mae generica e editorial)
   const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
   const [showNewSub, setShowNewSub] = useState(false)
-  const [newSub, setNewSub] = useState({ title: '', description: '', due_date: today, priority: 'normal', assigned_to: '', department_id: '', category_id: '' })
+  const [newSub, setNewSub] = useState({ title: '', description: '', due_date: today, priority: 'normal', assigned_to: [] as string[], department_id: '', category_id: '', drive_link: '', drive_link_raw: '', approval_link: '', approval_text: '', publish_date: '', publish_objective: '' })
+  const [newSubIsCarrossel, setNewSubIsCarrossel] = useState(false)
+  const [newSubFiles, setNewSubFiles] = useState<string[]>([''])
   const [savingSub, setSavingSub] = useState(false)
 
   const { toast } = useToast()
@@ -137,17 +139,25 @@ export default function TaskDetail() {
     if (!task || !newSub.title) return
     setSavingSub(true)
     try {
+      const approval_files = newSubIsCarrossel ? newSubFiles.filter(s => s && s.trim()) : (newSub.approval_link ? [newSub.approval_link] : [])
       await addSubtask(task.id, {
         title: newSub.title,
         description: newSub.description || undefined,
         due_date: newSub.due_date || undefined,
         priority: newSub.priority,
-        assigned_to: newSub.assigned_to ? +newSub.assigned_to : undefined,
+        assigned_to: newSub.assigned_to.map(Number),
         department_id: newSub.department_id ? +newSub.department_id : undefined,
         category_id: newSub.category_id ? +newSub.category_id : undefined,
+        drive_link: newSub.drive_link || undefined,
+        drive_link_raw: newSub.drive_link_raw || undefined,
+        approval_files,
+        approval_text: newSub.approval_text || undefined,
+        publish_date: newSub.publish_date || undefined,
+        publish_objective: newSub.publish_objective || undefined,
       })
       setShowNewSub(false)
-      setNewSub({ title: '', description: '', due_date: today, priority: 'normal', assigned_to: '', department_id: '', category_id: '' })
+      setNewSub({ title: '', description: '', due_date: today, priority: 'normal', assigned_to: [], department_id: '', category_id: '', drive_link: '', drive_link_raw: '', approval_link: '', approval_text: '', publish_date: '', publish_objective: '' })
+      setNewSubIsCarrossel(false); setNewSubFiles([''])
       loadTask()
       toast('Subtarefa adicionada')
     } catch (e: any) { toast(e?.message || 'Erro ao adicionar subtarefa', 'error') }
@@ -801,18 +811,69 @@ export default function TaskDetail() {
       {/* New Subtarefa modal */}
       {showNewSub && (
         <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) (() => setShowNewSub(false))() }}>
-          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
             <h2><Plus size={18} style={{ marginRight: 8, verticalAlign: 'middle', color: '#FFB300' }} />Nova Subtarefa</h2>
             <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Vinculada a "{task?.title}". Ao concluir todas as subtarefas, a mae auto-conclui.</p>
             <div className="form-group"><label>Titulo *</label><input className="input" value={newSub.title} onChange={e => setNewSub(p => ({ ...p, title: e.target.value }))} placeholder="Ex: Desenhar capa" autoFocus /></div>
             <div className="form-group"><label>Descricao</label><textarea className="input" rows={3} value={newSub.description} onChange={e => setNewSub(p => ({ ...p, description: e.target.value }))} /></div>
             <div className="form-row">
+              <div className="form-group"><label>Categoria</label><select className="select" value={newSub.category_id} onChange={e => setNewSub(p => ({ ...p, category_id: e.target.value }))}><option value="">Nenhuma</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+              <div className="form-group"><label>Departamento</label><select className="select" value={newSub.department_id} onChange={e => setNewSub(p => ({ ...p, department_id: e.target.value }))}><option value="">Nenhum</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+            </div>
+            <div className="form-group">
+              <label>Responsaveis</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {users.filter(u => u.role !== 'cliente').map(u => {
+                  const sel = newSub.assigned_to.includes(String(u.id))
+                  return <button type="button" key={u.id} onClick={() => setNewSub(p => ({ ...p, assigned_to: sel ? p.assigned_to.filter(x => x !== String(u.id)) : [...p.assigned_to, String(u.id)] }))} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${sel ? '#34C759' : 'rgba(255,255,255,0.08)'}`, background: sel ? 'rgba(52,199,89,0.12)' : 'transparent', color: sel ? '#34C759' : '#9B96B0', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>{sel ? '✓ ' : ''}{u.name}</button>
+                })}
+              </div>
+            </div>
+            <div className="form-row">
               <div className="form-group"><label>Prazo</label><input className="input" type="date" value={newSub.due_date} onChange={e => setNewSub(p => ({ ...p, due_date: e.target.value }))} /></div>
               <div className="form-group"><label>Prioridade</label><select className="select" value={newSub.priority} onChange={e => setNewSub(p => ({ ...p, priority: e.target.value }))}><option value="baixa">Baixa</option><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select></div>
             </div>
             <div className="form-row">
-              <div className="form-group"><label>Departamento</label><select className="select" value={newSub.department_id} onChange={e => setNewSub(p => ({ ...p, department_id: e.target.value }))}><option value="">Nenhum</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
-              <div className="form-group"><label>Responsavel</label><select className="select" value={newSub.assigned_to} onChange={e => setNewSub(p => ({ ...p, assigned_to: e.target.value }))}><option value="">Ninguem</option>{users.filter(u => u.role !== 'cliente').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+              <div className="form-group"><label>Link Drive (Arquivo Bruto)</label><input className="input" value={newSub.drive_link_raw} onChange={e => setNewSub(p => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
+              <div className="form-group"><label>Link Drive (Arquivo Pronto)</label><input className="input" value={newSub.drive_link} onChange={e => setNewSub(p => ({ ...p, drive_link: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
+            </div>
+            <div style={{ padding: '14px 16px', background: 'rgba(245,166,35,0.04)', border: '1px solid rgba(245,166,35,0.12)', borderRadius: 10, marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Conteudo para Aprovacao (opcional)</div>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#A8A3B8', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={newSubIsCarrossel} onChange={e => {
+                    const checked = e.target.checked
+                    if (checked) {
+                      setNewSubIsCarrossel(true)
+                      setNewSubFiles(newSub.approval_link ? [newSub.approval_link] : [''])
+                    } else {
+                      setNewSubIsCarrossel(false)
+                      setNewSub(p => ({ ...p, approval_link: newSubFiles[0] || '' }))
+                    }
+                  }} style={{ accentColor: '#FFB300' }} />
+                  Carrossel (varios arquivos)
+                </label>
+              </div>
+              {newSubIsCarrossel ? (
+                <div className="form-group">
+                  <label>Arquivos do carrossel</label>
+                  {newSubFiles.map((url, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                      <span style={{ minWidth: 56, fontSize: 11, color: '#6B6580', fontWeight: 700 }}>Slide {idx + 1}</span>
+                      <input className="input" value={url} placeholder="Link do Drive (publico)" style={{ flex: 1 }} onChange={e => setNewSubFiles(arr => arr.map((x, i) => i === idx ? e.target.value : x))} />
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => setNewSubFiles(arr => arr.filter((_, i) => i !== idx))} title="Remover" style={{ padding: '6px 10px' }}><X size={12} /></button>
+                    </div>
+                  ))}
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setNewSubFiles(arr => [...arr, ''])} style={{ marginTop: 4 }}><Plus size={12} /> Adicionar slide</button>
+                </div>
+              ) : (
+                <div className="form-group"><label>Link do arquivo finalizado</label><input className="input" value={newSub.approval_link} onChange={e => setNewSub(p => ({ ...p, approval_link: e.target.value }))} placeholder="Link do Drive — compartilhamento: qualquer pessoa com o link" /><small style={{ fontSize: 11, color: '#6B6580', marginTop: 4, display: 'block' }}>O cliente vai ver o video/imagem embutido. Precisa estar publico no Drive.</small></div>
+              )}
+              <div className="form-group"><label>Texto / Legenda</label><textarea className="input" rows={3} value={newSub.approval_text} onChange={e => setNewSub(p => ({ ...p, approval_text: e.target.value }))} placeholder="Legenda do post, texto da publicacao, descricao..." /></div>
+              <div className="form-row">
+                <div className="form-group"><label>Data da Publicacao</label><input className="input" type="date" value={newSub.publish_date} onChange={e => setNewSub(p => ({ ...p, publish_date: e.target.value }))} /></div>
+                <div className="form-group"><label>Objetivo da Publicacao</label><input className="input" value={newSub.publish_objective} onChange={e => setNewSub(p => ({ ...p, publish_objective: e.target.value }))} placeholder="Ex: Gerar leads, engajamento..." /></div>
+              </div>
             </div>
             <div className="modal-actions">
               <button className="btn btn-secondary" onClick={() => setShowNewSub(false)}>Cancelar</button>
