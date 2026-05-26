@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { SSEProvider } from './context/SSEContext'
+import { ThemeProvider } from './context/ThemeContext'
 import Sidebar from './components/Sidebar'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -77,11 +78,13 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-      <Routes>
-        <Route path="/onboard/:token" element={<Onboard />} />
-        <Route path="/approvals/:token" element={<PublicApprovals />} />
-        <Route path="/*" element={<AuthProvider><ToastProvider><AppRoutes /></ToastProvider></AuthProvider>} />
-      </Routes>
+      <ThemeProvider>
+        <Routes>
+          <Route path="/onboard/:token" element={<Onboard />} />
+          <Route path="/approvals/:token" element={<PublicApprovals />} />
+          <Route path="/*" element={<AuthProvider><ToastProvider><AppRoutes /></ToastProvider></AuthProvider>} />
+        </Routes>
+      </ThemeProvider>
     </BrowserRouter>
   )
 }

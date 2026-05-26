@@ -38,7 +38,10 @@ router.get('/', (req, res) => {
   const where = ['t.is_active = 1']
   const params = []
 
-  // Show standalone tasks, mother tasks, AND only the first non-concluded subtask per mother
+  // Mostrar: standalone, mae, primeira subtarefa nao-concluida da mae,
+  // E qualquer subtarefa que esteja em stage "ativo" (em_producao, ajustar,
+  // aguardando_cliente, etc) — qualquer coisa fora de backlog/programar_publicacao
+  // precisa de atencao no pipeline mesmo nao sendo a "proxima da fila".
   where.push(`(
     t.parent_task_id IS NULL
     OR t.subtask_position = (
@@ -47,6 +50,7 @@ router.get('/', (req, res) => {
         AND t2.is_active = 1
         AND t2.stage NOT IN ('concluido', 'rejeitado')
     )
+    OR t.stage NOT IN ('concluido', 'rejeitado', 'backlog', 'programar_publicacao')
   )`)
 
   // Role-based scoping
@@ -103,7 +107,10 @@ router.get('/pipeline', (req, res) => {
   const where = ['t.is_active = 1']
   const params = []
 
-  // Show standalone tasks, mother tasks, AND only the first non-concluded subtask per mother
+  // Mostrar: standalone, mae, primeira subtarefa nao-concluida da mae,
+  // E qualquer subtarefa que esteja em stage "ativo" (em_producao, ajustar,
+  // aguardando_cliente, etc) — qualquer coisa fora de backlog/programar_publicacao
+  // precisa de atencao no pipeline mesmo nao sendo a "proxima da fila".
   where.push(`(
     t.parent_task_id IS NULL
     OR t.subtask_position = (
@@ -112,6 +119,7 @@ router.get('/pipeline', (req, res) => {
         AND t2.is_active = 1
         AND t2.stage NOT IN ('concluido', 'rejeitado')
     )
+    OR t.stage NOT IN ('concluido', 'rejeitado', 'backlog', 'programar_publicacao')
   )`)
 
   if (req.user.role === 'cliente') {

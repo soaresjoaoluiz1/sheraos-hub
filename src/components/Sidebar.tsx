@@ -2,15 +2,24 @@ import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
+import { useTheme } from '../context/ThemeContext'
 import { apiFetch } from '../lib/api'
 import {
   LayoutDashboard, Kanban, ListTodo, CheckCircle, Building2, UsersRound,
-  Layers, Tag, Briefcase, DollarSign, Settings, LogOut, Menu, X, ChevronsLeft, ChevronsRight, Video, ExternalLink, BarChart3,
+  Layers, Tag, Briefcase, DollarSign, Settings, LogOut, Menu, X, ChevronsLeft, ChevronsRight, Video, ExternalLink, BarChart3, Sun, Moon,
 } from 'lucide-react'
 import NotificationBell from './NotificationBell'
 
+function getInitials(name: string): string {
+  if (!name) return '?'
+  const parts = name.trim().split(/\s+/)
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
 export default function Sidebar() {
   const { user, logout } = useAuth()
+  const { theme, setTheme, toggleTheme } = useTheme()
   const [approvalCount, setApprovalCount] = useState(0)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === '1')
@@ -102,11 +111,49 @@ export default function Sidebar() {
         </nav>
         <div className="sidebar-footer">
           {collapsed ? (
-            <button className="logout-btn" onClick={logout} title="Sair" style={{ margin: '0 auto' }}><LogOut size={16} /></button>
+            <>
+              <button
+                type="button"
+                className="theme-toggle-collapsed"
+                onClick={toggleTheme}
+                title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+              >
+                {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+              </button>
+              <button className="logout-btn" onClick={logout} title="Sair"><LogOut size={16} /></button>
+            </>
           ) : (
             <>
-              <div><div className="sidebar-user">{user.name}</div><div className="sidebar-role">{user.role === 'dono' ? 'CEO' : user.role === 'gerente' ? 'Gerente' : user.role === 'funcionario' ? 'Funcionario' : 'Cliente'}</div></div>
-              <button className="logout-btn" onClick={logout} title="Sair"><LogOut size={16} /></button>
+              <div className="theme-toggle" role="tablist" aria-label="Alternar tema">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={theme === 'light'}
+                  className={`theme-toggle-option ${theme === 'light' ? 'active' : ''}`}
+                  onClick={() => setTheme('light')}
+                  title="Tema claro"
+                >
+                  <Sun size={13} /> Claro
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={theme === 'dark'}
+                  className={`theme-toggle-option ${theme === 'dark' ? 'active' : ''}`}
+                  onClick={() => setTheme('dark')}
+                  title="Tema escuro"
+                >
+                  <Moon size={13} /> Escuro
+                </button>
+              </div>
+              <div className="sidebar-user-row">
+                <div className="sidebar-avatar" aria-hidden="true">{getInitials(user.name)}</div>
+                <div className="sidebar-user-info">
+                  <div className="sidebar-user">{user.name}</div>
+                  <div className="sidebar-role">{user.role === 'dono' ? 'CEO' : user.role === 'gerente' ? 'Gerente' : user.role === 'funcionario' ? 'Funcionario' : 'Cliente'}</div>
+                </div>
+                <button className="logout-btn" onClick={logout} title="Sair"><LogOut size={16} /></button>
+              </div>
             </>
           )}
         </div>
