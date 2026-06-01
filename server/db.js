@@ -352,6 +352,125 @@ try {
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id)") } catch {}
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_subtask_kind ON tasks(subtask_kind)") } catch {}
 
+// =====================================================================
+// Tarefas recorrentes — templates que o cron usa pra criar tasks novas
+// =====================================================================
+// Detecta tabela com schema antigo (criada antes do schema final) e dropa pra recriar limpa.
+// Como nenhum template foi criado com sucesso ainda, e seguro descartar.
+try {
+  const cols = db.prepare("PRAGMA table_info(task_templates)").all()
+  if (cols.length > 0) {
+    const colNames = cols.map(c => c.name)
+    const required = ['client_id', 'task_type', 'title', 'recurrence_type', 'recurrence_day']
+    const missingCritical = required.filter(c => !colNames.includes(c))
+    if (missingCritical.length > 0) {
+      console.log('[migration] task_templates com schema incompleto, recriando. Faltando:', missingCritical)
+      db.exec('DROP TABLE IF EXISTS task_template_subtask_assignees')
+      db.exec('DROP TABLE IF EXISTS task_template_subtasks')
+      db.exec('DROP TABLE IF EXISTS task_template_assignees')
+      db.exec('DROP TABLE IF EXISTS task_templates')
+    }
+  }
+} catch (e) { console.log('[migration] check task_templates falhou:', e.message) }
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS task_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    task_type TEXT DEFAULT 'normal',
+    client_id INTEGER NOT NULL,
+    category_id INTEGER, department_id INTEGER,
+    title TEXT NOT NULL, description TEXT, priority TEXT DEFAULT 'normal',
+    drive_link TEXT, drive_link_raw TEXT,
+    approval_link TEXT, approval_files TEXT, approval_text TEXT,
+    publish_date TEXT, publish_objective TEXT,
+    due_date_offset_days INTEGER DEFAULT 7,
+    recurrence_type TEXT NOT NULL,
+    recurrence_day INTEGER NOT NULL,
+    recurrence_hour INTEGER DEFAULT 6,
+    last_run_at TEXT, next_run_at TEXT,
+    created_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now', '-3 hours')),
+    updated_at TEXT DEFAULT (datetime('now', '-3 hours'))
+  )`)
+} catch {}
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS task_template_assignees (
+    template_id INTEGER,
+    user_id INTEGER,
+    PRIMARY KEY (template_id, user_id)
+  )`)
+} catch {}
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS task_template_subtasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_id INTEGER,
+    subtask_position INTEGER,
+    title TEXT NOT NULL, description TEXT, priority TEXT DEFAULT 'normal',
+    category_id INTEGER, department_id INTEGER,
+    due_date_offset_days INTEGER,
+    drive_link TEXT, drive_link_raw TEXT,
+    approval_link TEXT, approval_files TEXT, approval_text TEXT,
+    publish_date TEXT, publish_objective TEXT
+  )`)
+} catch {}
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS task_template_subtask_assignees (
+    template_subtask_id INTEGER,
+    user_id INTEGER,
+    PRIMARY KEY (template_subtask_id, user_id)
+  )`)
+} catch {}
+// Sem WHERE: sqlite3 CLI do CentOS 7 nao parseia partial index, quebra inspecao manual.
+try { db.exec("CREATE INDEX IF NOT EXISTS idx_task_templates_next_run ON task_templates(next_run_at)") } catch {}
+try { db.exec("CREATE INDEX IF NOT EXISTS idx_task_template_subtasks_template ON task_template_subtasks(template_id)") } catch {}
+
+// Backward-compat: garante que TODAS as colunas existem mesmo se a tabela foi criada antes
+const taskTplCols = [
+  ['is_active', 'INTEGER DEFAULT 1'],
+  ['task_type', "TEXT DEFAULT 'normal'"],
+  ['category_id', 'INTEGER'],
+  ['department_id', 'INTEGER'],
+  ['description', 'TEXT'],
+  ['priority', "TEXT DEFAULT 'normal'"],
+  ['drive_link', 'TEXT'],
+  ['drive_link_raw', 'TEXT'],
+  ['approval_link', 'TEXT'],
+  ['approval_files', 'TEXT'],
+  ['approval_text', 'TEXT'],
+  ['publish_date', 'TEXT'],
+  ['publish_objective', 'TEXT'],
+  ['due_date_offset_days', 'INTEGER DEFAULT 7'],
+  ['recurrence_hour', 'INTEGER DEFAULT 6'],
+  ['last_run_at', 'TEXT'],
+  ['next_run_at', 'TEXT'],
+  ['created_by', 'INTEGER'],
+  ['created_at', "TEXT DEFAULT (datetime('now', '-3 hours'))"],
+  ['updated_at', "TEXT DEFAULT (datetime('now', '-3 hours'))"],
+]
+for (const [col, def] of taskTplCols) {
+  try { db.exec(`ALTER TABLE task_templates ADD COLUMN ${col} ${def}`) } catch {}
+}
+
+const taskTplSubCols = [
+  ['description', 'TEXT'],
+  ['priority', "TEXT DEFAULT 'normal'"],
+  ['category_id', 'INTEGER'],
+  ['department_id', 'INTEGER'],
+  ['due_date_offset_days', 'INTEGER'],
+  ['drive_link', 'TEXT'],
+  ['drive_link_raw', 'TEXT'],
+  ['approval_link', 'TEXT'],
+  ['approval_files', 'TEXT'],
+  ['approval_text', 'TEXT'],
+  ['publish_date', 'TEXT'],
+  ['publish_objective', 'TEXT'],
+  ['subtask_position', 'INTEGER'],
+]
+for (const [col, def] of taskTplSubCols) {
+  try { db.exec(`ALTER TABLE task_template_subtasks ADD COLUMN ${col} ${def}`) } catch {}
+}
+
 // Migrate users.role CHECK to include 'gerente' (SQLite requires table rebuild)
 try {
   const tbl = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get()

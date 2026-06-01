@@ -59,7 +59,7 @@ export default function TaskDetail() {
     const data = await fetchTask(+id)
     setTask(data.task); setComments(data.comments); setHistory(data.history); setAttachments(data.attachments)
     const files = getApprovalFiles(data.task as any)
-    setEditData({ title: data.task.title, description: data.task.description || '', due_date: data.task.due_date?.slice(0, 10) || '', priority: data.task.priority, department_id: data.task.department_id || '', assigned_to: (data.task.assignees || []).map((a: any) => String(a.user_id)), category_id: data.task.category_id || '', drive_link: data.task.drive_link || '', drive_link_raw: data.task.drive_link_raw || '', approval_link: data.task.approval_link || '', approval_files: files, is_carrossel: files.length > 1, approval_text: data.task.approval_text || '', publish_date: data.task.publish_date || '', publish_objective: data.task.publish_objective || '', meeting_datetime: (data.task as any).meeting_datetime || '', recording_datetime: (data.task as any).recording_datetime || '' })
+    setEditData({ title: data.task.title, description: data.task.description || '', due_date: data.task.due_date?.slice(0, 10) || '', priority: data.task.priority, department_id: data.task.department_id || '', assigned_to: (data.task.assignees || []).map((a: any) => String(a.user_id)), category_id: data.task.category_id || '', drive_link: data.task.drive_link || '', drive_link_raw: data.task.drive_link_raw || '', approval_link: data.task.approval_link || '', approval_files: files, is_carrossel: files.length > 1, approval_text: data.task.approval_text || '', publish_date: data.task.publish_date || '', publish_objective: data.task.publish_objective || '', meeting_datetime: (data.task as any).meeting_datetime || '', recording_datetime: (data.task as any).recording_datetime || '', client_id: data.task.client_id || '' })
     setTimeEntries(data.timeEntries || []); setTotalTime(data.totalTimeSeconds || 0)
     if (data.activeTimer) { setActiveTimerEntry(data.activeTimer); setTimerRunning(true) } else { setActiveTimerEntry(null); setTimerRunning(false) }
   }, [id])
@@ -114,7 +114,7 @@ export default function TaskDetail() {
     try {
       // Normaliza approval_files: se carrossel use array, senao usa approval_link como single
       const cleanFiles = (editData.approval_files || []).filter((s: string) => s && s.trim())
-      const payload: any = { ...editData, department_id: editData.department_id ? +editData.department_id : null, assigned_to: (editData.assigned_to || []).map(Number), category_id: editData.category_id ? +editData.category_id : null }
+      const payload: any = { ...editData, department_id: editData.department_id ? +editData.department_id : null, assigned_to: (editData.assigned_to || []).map(Number), category_id: editData.category_id ? +editData.category_id : null, client_id: editData.client_id ? +editData.client_id : undefined }
       if (editData.is_carrossel) {
         payload.approval_files = cleanFiles
         delete payload.approval_link // backend sincroniza com primeiro item
@@ -314,6 +314,9 @@ export default function TaskDetail() {
                   <div className="form-group"><label>Prioridade</label><select className="select" value={editData.priority} onChange={e => setEditData((p: any) => ({ ...p, priority: e.target.value }))}><option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></div>
                 </div>
                 <div className="form-group"><label>Categoria</label><select className="select" value={editData.category_id} onChange={e => setEditData((p: any) => ({ ...p, category_id: e.target.value }))}><option value="">Nenhuma</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                {isDono && (
+                  <div className="form-group"><label>Cliente</label><select className="select" value={editData.client_id || ''} onChange={e => setEditData((p: any) => ({ ...p, client_id: e.target.value }))}>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                )}
                 <div className="form-row">
                   <div className="form-group"><label>Link Drive (Arquivo Bruto)</label><input className="input" value={editData.drive_link_raw} onChange={e => setEditData((p: any) => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
                   <div className="form-group"><label>Link Drive (Arquivo Pronto)</label><input className="input" value={editData.drive_link} onChange={e => setEditData((p: any) => ({ ...p, drive_link: e.target.value }))} placeholder="https://drive.google.com/..." /></div>

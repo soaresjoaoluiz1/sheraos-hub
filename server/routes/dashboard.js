@@ -83,6 +83,26 @@ router.get('/stats', (req, res) => {
     const reworkRate = reworkData.totalCreated > 0
       ? Math.round((reworkData.reworked / reworkData.totalCreated) * 1000) / 10
       : 0
+
+    // Lista das tarefas que tiveram retrabalho recente — mais recente primeiro
+    const reworkList = db.prepare(`
+      SELECT
+        t.id, t.title, t.stage,
+        c.name as client_name,
+        ps.name as stage_name, ps.color as stage_color,
+        MAX(th.created_at) as last_rework_at
+      FROM task_history th
+      JOIN tasks t ON t.id = th.task_id
+      LEFT JOIN clients c ON c.id = t.client_id
+      LEFT JOIN pipeline_stages ps ON ps.slug = t.stage
+      WHERE th.to_stage IN ('revisao_interna', 'em_producao')
+        AND th.from_stage IN ('aprovacao_interna', 'aguardando_cliente')
+        AND th.created_at >= ?
+        AND t.is_active = 1
+      GROUP BY t.id
+      ORDER BY last_rework_at DESC
+      LIMIT 25
+    `).all(sinceStr)
     const byCategory = db.prepare(`
       SELECT cat.name, cat.color, COUNT(t.id) as count FROM task_categories cat
       LEFT JOIN tasks t ON t.category_id = cat.id AND t.is_active = 1
@@ -95,7 +115,7 @@ router.get('/stats', (req, res) => {
     const daily = db.prepare("SELECT date(created_at) as date, COUNT(*) as count FROM tasks WHERE created_at >= ? AND is_active = 1 GROUP BY date(created_at) ORDER BY date").all(sinceStr)
     const toPublish = db.prepare("SELECT t.id, t.title, t.due_date, c.name as client_name, t.approval_link FROM tasks t LEFT JOIN clients c ON t.client_id = c.id WHERE t.stage = 'programar_publicacao' AND t.is_active = 1 ORDER BY t.due_date ASC").all()
 
-    res.json({ totalTasks, byStage, byDepartment, byCategory, byAssignee, throughputByAssignee, clientWaitTime, reworkRate, reworkedCount: reworkData.reworked, overdue, pendingInternal, pendingClient, completedPeriod, daily, toPublish })
+    res.json({ totalTasks, byStage, byDepartment, byCategory, byAssignee, throughputByAssignee, clientWaitTime, reworkRate, reworkedCount: reworkData.reworked, reworkList, overdue, pendingInternal, pendingClient, completedPeriod, daily, toPublish })
   } else if (req.user.role === 'funcionario') {
     const uid = req.user.id
     const myTasks = db.prepare('SELECT COUNT(*) as c FROM tasks WHERE id IN (SELECT task_id FROM task_assignees WHERE user_id = ?) AND is_active = 1').get(uid).c

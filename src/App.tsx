@@ -21,6 +21,7 @@ import Notifications from './pages/Notifications'
 import Services from './pages/Services'
 import Financial from './pages/Financial'
 import Gravacoes from './pages/Gravacoes'
+import TaskTemplates from './pages/TaskTemplates'
 import Onboard from './pages/Onboard'
 import PublicApprovals from './pages/PublicApprovals'
 import TimerCheck from './components/TimerCheck'
@@ -62,6 +63,7 @@ function AppRoutes() {
               <Route path="/departments" element={<Departments />} />
               <Route path="/categories" element={<Categories />} />
               <Route path="/services" element={<Services />} />
+              <Route path="/tarefas-recorrentes" element={<TaskTemplates />} />
             </>}
             {isDono && <>
               <Route path="/financial" element={<Financial />} />

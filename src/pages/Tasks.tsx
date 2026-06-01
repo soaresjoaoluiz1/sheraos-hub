@@ -6,8 +6,9 @@ import {
   createTask, createTaskRequest, createMaeTask, bulkMoveTasks, bulkAssignTasks, formatNumber,
   type Task, type Client, type Department, type User as UserT, type TaskCategory, type PipelineStage,
 } from '../lib/api'
-import { Plus, Clock, Building2, User, ExternalLink, Download, AlertTriangle, CheckSquare, Square, Users, ArrowRight, ArrowUpDown, Filter, X } from 'lucide-react'
+import { Plus, Clock, Building2, User, ExternalLink, Download, AlertTriangle, CheckSquare, Square, Users, ArrowRight, ArrowUpDown, Filter, X, Repeat } from 'lucide-react'
 import { useToast } from '../components/Toast'
+import TaskTemplateModal from '../components/TaskTemplateModal'
 
 function timeAgo(d: string) {
   // DB salva datetime ja em horario de Brasilia (UTC-3) sem marcador de TZ.
@@ -72,6 +73,7 @@ export default function Tasks() {
   // Modal
   const [showNew, setShowNew] = useState(false)
   const [showNewMae, setShowNewMae] = useState(false)
+  const [showNewRecurring, setShowNewRecurring] = useState(false)
   const [showRequest, setShowRequest] = useState(false)
   const [newRequest, setNewRequest] = useState({ title: '', description: '', drive_link_raw: '' })
   const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
@@ -195,6 +197,7 @@ export default function Tasks() {
           {isDono && <button className="btn btn-secondary btn-sm" onClick={handleExport}><Download size={14} /> Exportar</button>}
           {(isDono || isFunc) && <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}><Plus size={14} /> Nova Tarefa</button>}
           {(isDono || isFunc) && <button className="btn btn-secondary btn-sm" onClick={() => setShowNewMae(true)}><Plus size={14} /> Tarefa Mae</button>}
+          {(isDono || isFunc) && <button className="btn btn-secondary btn-sm" onClick={() => setShowNewRecurring(true)}><Repeat size={14} /> Recorrencia</button>}
           {isCliente && <button className="btn btn-primary btn-sm" onClick={() => setShowRequest(true)}><Plus size={14} /> Nova Solicitacao</button>}
         </div>
       </div>
@@ -441,6 +444,8 @@ export default function Tasks() {
           </div>
         </div></div>
       )}
+
+      <TaskTemplateModal open={showNewRecurring} onClose={() => setShowNewRecurring(false)} onSaved={() => {}} />
     </div>
   )
 }

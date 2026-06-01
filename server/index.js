@@ -20,6 +20,8 @@ import dashboardRoutes from './routes/dashboard.js'
 import notificationRoutes from './routes/notifications.js'
 import financialRoutes from './routes/financial.js'
 import performanceRoutes, { publicRouter as performancePublicRoutes } from './routes/performance.js'
+import taskTemplateRoutes from './routes/task-templates.js'
+import { runDueTemplates } from './services/taskTemplates.js'
 import { authenticate } from './middleware/auth.js'
 import { addSSEClient, removeSSEClient, addSSEUserClient, removeSSEUserClient, sendToUser } from './sse.js'
 
@@ -42,6 +44,7 @@ app.use('/api/notifications', authenticate, notificationRoutes)
 app.use('/api/financial', authenticate, financialRoutes)
 app.use('/api/performance', performancePublicRoutes)
 app.use('/api/performance', authenticate, performanceRoutes)
+app.use('/api/task-templates', authenticate, taskTemplateRoutes)
 
 // Active timers for current user
 app.get('/api/my-timers', authenticate, (req, res) => {
@@ -321,4 +324,14 @@ app.listen(PORT, () => {
       }
     }
   }, 30000) // Check every 30 seconds
+
+  // Recurring task scheduler — a cada 5min, executa templates cujo next_run_at <= agora
+  setInterval(() => {
+    try {
+      const created = runDueTemplates()
+      if (created.length > 0) console.log(`[Recurring] criadas ${created.length} tarefa(s) dos templates:`, created)
+    } catch (err) {
+      console.error('[Recurring scheduler]', err.message)
+    }
+  }, 5 * 60 * 1000)
 })

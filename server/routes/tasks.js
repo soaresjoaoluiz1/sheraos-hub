@@ -562,8 +562,18 @@ router.put('/:id', requireRole('dono', 'gerente', 'funcionario'), (req, res) => 
     if (!isAssignee && task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Sem permissao' })
   }
 
-  const { title, description, due_date, priority, department_id, assigned_to, drive_link, drive_link_raw, category_id, approval_link, approval_text, approval_files, publish_date, publish_objective, meeting_datetime, recording_datetime } = req.body
+  const { title, description, due_date, priority, department_id, assigned_to, drive_link, drive_link_raw, category_id, approval_link, approval_text, approval_files, publish_date, publish_objective, meeting_datetime, recording_datetime, client_id } = req.body
   const sets = []; const params = []
+  // Trocar cliente: so dono/gerente. Funcionario nao pode.
+  if (client_id !== undefined && (req.user.role === 'dono' || req.user.role === 'gerente')) {
+    const newClient = db.prepare('SELECT id, name FROM clients WHERE id = ?').get(client_id)
+    if (!newClient) return res.status(400).json({ error: 'Cliente nao encontrado' })
+    if (newClient.id !== task.client_id) {
+      const oldClient = db.prepare('SELECT name FROM clients WHERE id = ?').get(task.client_id)
+      sets.push('client_id = ?'); params.push(newClient.id)
+      db.prepare('INSERT INTO task_history (task_id, from_stage, to_stage, user_id, comment) VALUES (?, ?, ?, ?, ?)').run(task.id, task.stage, task.stage, req.user.id, `Cliente: ${oldClient?.name || 'N/A'} → ${newClient.name}`)
+    }
+  }
   if (title !== undefined) { sets.push('title = ?'); params.push(title) }
   if (description !== undefined) { sets.push('description = ?'); params.push(description) }
   if (due_date !== undefined) { sets.push('due_date = ?'); params.push(due_date) }

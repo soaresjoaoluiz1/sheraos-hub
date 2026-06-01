@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
 import { fetchPipelineTasks, fetchClients, fetchDepartments, fetchUsers, fetchCategories, createTask, createEditorialTask, createMaeTask, moveTaskStage, type Task, type PipelineStage, type Client, type Department, type User as UserT, type TaskCategory } from '../lib/api'
-import { Clock, Building2, User, ExternalLink, ChevronDown, ChevronRight, ArrowRight, Search, AlertTriangle, Plus, Layers, X } from 'lucide-react'
+import { Clock, Building2, User, ExternalLink, ChevronDown, ChevronRight, ArrowRight, Search, AlertTriangle, Plus, Layers, X, Repeat } from 'lucide-react'
 import { useToast } from '../components/Toast'
+import TaskTemplateModal from '../components/TaskTemplateModal'
 
 function timeAgo(d: string) {
   const [datePart, timePartRaw] = d.split(/[ T]/)
@@ -48,6 +49,7 @@ export default function Pipeline() {
   const [showNew, setShowNew] = useState(false)
   const [showNewEditorial, setShowNewEditorial] = useState(false)
   const [showNewMae, setShowNewMae] = useState(false)
+  const [showNewRecurring, setShowNewRecurring] = useState(false)
   const [newEditorial, setNewEditorial] = useState({ client_id: '', month_label: '', num_posts: '8', num_videos: '4', due_date: '', category_id: '' })
   const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
   const [newMae, setNewMae] = useState({ title: '', client_id: '', description: '', due_date: today, category_id: '', department_id: '', priority: 'normal', assigned_to: [] as string[], drive_link: '', drive_link_raw: '', approval_link: '', approval_text: '', publish_date: '', publish_objective: '' })
@@ -227,6 +229,7 @@ export default function Pipeline() {
           <h1>Pipeline</h1>
           {(isDono || isFunc) && <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}><Plus size={14} /> Nova Tarefa</button>}
           {(isDono || isFunc) && <button className="btn btn-secondary btn-sm" onClick={() => setShowNewMae(true)}><Layers size={14} /> Tarefa Mae</button>}
+          {(isDono || isFunc) && <button className="btn btn-secondary btn-sm" onClick={() => setShowNewRecurring(true)}><Repeat size={14} /> Recorrencia</button>}
           {isDono && <button className="btn btn-secondary btn-sm" onClick={() => setShowNewEditorial(true)}><Layers size={14} /> Linha Editorial</button>}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -548,6 +551,8 @@ export default function Pipeline() {
           <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNewMae(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreateMae} disabled={saving || !newMae.title || !newMae.client_id}>{saving ? 'Criando...' : 'Criar Tarefa Mae'}</button></div>
         </div></div>
       )}
+
+      <TaskTemplateModal open={showNewRecurring} onClose={() => setShowNewRecurring(false)} onSaved={() => {}} />
     </div>
   )
 }

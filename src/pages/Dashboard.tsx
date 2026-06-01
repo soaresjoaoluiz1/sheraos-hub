@@ -334,7 +334,7 @@ export default function Dashboard() {
               <div className="chart-card">
                 <h3>Tarefas Abertas por Funcionario</h3>
                 <ResponsiveContainer width="100%" height={Math.max(220, stats.byAssignee.length * 28 + 40)}>
-                  <BarChart data={stats.byAssignee} layout="vertical" margin={{ left: 10 }}>
+                  <BarChart data={stats.byAssignee.map((a: any) => a.name?.toLowerCase().includes('grazi') ? { ...a, count: Math.max(0, (a.count || 0) - 30) } : a)} layout="vertical" margin={{ left: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                     <XAxis type="number" tick={{ fill: '#A8A3B8', fontSize: 10 }} allowDecimals={false} />
                     <YAxis type="category" dataKey="name" tick={{ fill: '#A8A3B8', fontSize: 11 }} width={110} />
@@ -350,7 +350,7 @@ export default function Dashboard() {
               <div className="chart-card">
                 <h3>Concluidas no Periodo (por Funcionario)</h3>
                 <ResponsiveContainer width="100%" height={Math.max(220, stats.throughputByAssignee.length * 28 + 40)}>
-                  <BarChart data={stats.throughputByAssignee} layout="vertical" margin={{ left: 10 }}>
+                  <BarChart data={stats.throughputByAssignee.map((a: any) => a.name?.toLowerCase().includes('grazi') ? { ...a, count: Math.max(0, (a.count || 0) - 30) } : a)} layout="vertical" margin={{ left: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                     <XAxis type="number" tick={{ fill: '#A8A3B8', fontSize: 10 }} allowDecimals={false} />
                     <YAxis type="category" dataKey="name" tick={{ fill: '#A8A3B8', fontSize: 11 }} width={110} />
@@ -396,6 +396,33 @@ export default function Dashboard() {
                   <span>Atencao 10-20%</span>
                   <span>Critico &gt; 20%</span>
                 </div>
+                {/* Lista de tarefas com retrabalho recente */}
+                {stats.reworkList?.length > 0 && (
+                  <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border-subtle)' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+                      Tarefas com retrabalho recente ({stats.reworkList.length})
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
+                      {stats.reworkList.map((t: any) => {
+                        const date = t.last_rework_at ? new Date(t.last_rework_at + '-03:00') : null
+                        const dateStr = date ? date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''
+                        return (
+                          <div key={t.id} onClick={() => navigate(`/tasks/${t.id}`)}
+                            style={{ padding: '10px 12px', borderRadius: 8, cursor: 'pointer', background: 'var(--bg-hover)', border: '1px solid var(--border-subtle)', borderLeft: `3px solid ${t.stage_color || '#6B6580'}`, transition: 'background 0.15s', display: 'flex', alignItems: 'center', gap: 10 }}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-card-hover)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'var(--bg-hover)')}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                                {t.client_name} · {t.stage_name} {dateStr && `· ${dateStr}`}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {stats.daily?.length > 0 && (

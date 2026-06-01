@@ -102,6 +102,67 @@ export const rejectTaskRequest = (id: number, comment: string) => apiFetch(`/api
 export const createEditorialTask = (data: { client_id: number; month_label: string; num_posts?: number; num_videos?: number; due_date?: string; category_id?: number }) => apiFetch<{ task: Task; parent_id: number }>('/api/tasks/editorial', { method: 'POST', body: JSON.stringify(data) })
 export const createMaeTask = (data: { client_id: number; title: string; description?: string; due_date?: string; category_id?: number; department_id?: number; priority?: string; assigned_to?: number[]; drive_link?: string; drive_link_raw?: string; approval_link?: string; approval_files?: string[]; approval_text?: string; publish_date?: string; publish_objective?: string }) => apiFetch<{ task: Task }>('/api/tasks/mae', { method: 'POST', body: JSON.stringify(data) }).then(d => d.task)
 export const addSubtask = (parentId: number, data: { title: string; description?: string; due_date?: string; category_id?: number; department_id?: number; priority?: string; assigned_to?: number | number[]; drive_link?: string; drive_link_raw?: string; approval_link?: string; approval_files?: string[]; approval_text?: string; publish_date?: string; publish_objective?: string }) => apiFetch<{ subtask: Task }>(`/api/tasks/${parentId}/subtasks`, { method: 'POST', body: JSON.stringify(data) }).then(d => d.subtask)
+
+// ---------- Task Templates (recorrencia) ----------
+export interface TaskTemplateSubtask {
+  id?: number
+  subtask_position?: number
+  title: string
+  description?: string | null
+  priority?: string
+  category_id?: number | null
+  department_id?: number | null
+  due_date_offset_days?: number | null
+  drive_link?: string | null
+  drive_link_raw?: string | null
+  approval_link?: string | null
+  approval_files?: string[] | null
+  approval_text?: string | null
+  publish_date?: string | null
+  publish_objective?: string | null
+  assigned_to?: number[]
+}
+
+export interface TaskTemplate {
+  id: number
+  name: string
+  is_active: number
+  task_type: 'normal' | 'mae'
+  client_id: number
+  client_name?: string
+  category_id: number | null
+  department_id: number | null
+  title: string
+  description: string | null
+  priority: string
+  drive_link: string | null
+  drive_link_raw: string | null
+  approval_link: string | null
+  approval_files: string | null
+  approval_text: string | null
+  publish_date: string | null
+  publish_objective: string | null
+  due_date_offset_days: number
+  recurrence_type: 'weekly' | 'monthly'
+  recurrence_day: number
+  recurrence_hour: number
+  last_run_at: string | null
+  next_run_at: string | null
+  created_by: number | null
+  created_at: string
+  updated_at: string
+  subtasks_count?: number
+  // Carregados em GET /:id
+  assigned_to?: number[]
+  subtasks?: TaskTemplateSubtask[]
+}
+
+export const fetchTaskTemplates = () => apiFetch<{ templates: TaskTemplate[] }>('/api/task-templates').then(d => d.templates)
+export const fetchTaskTemplate = (id: number) => apiFetch<{ template: TaskTemplate }>(`/api/task-templates/${id}`).then(d => d.template)
+export const createTaskTemplate = (data: Partial<TaskTemplate>) => apiFetch<{ template: TaskTemplate }>('/api/task-templates', { method: 'POST', body: JSON.stringify(data) }).then(d => d.template)
+export const updateTaskTemplate = (id: number, data: Partial<TaskTemplate>) => apiFetch<{ template: TaskTemplate }>(`/api/task-templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }).then(d => d.template)
+export const deleteTaskTemplate = (id: number) => apiFetch(`/api/task-templates/${id}`, { method: 'DELETE' })
+export const runTaskTemplate = (id: number) => apiFetch<{ ok: boolean; task_id: number; subtasks_created: number }>(`/api/task-templates/${id}/run-now`, { method: 'POST' })
 export const confirmRecording = (parentId: number, data: { recording_datetime: string; capture_user_id?: number; edit_user_id?: number; design_user_id?: number }) => apiFetch<{ task: Task; gravacaoId: number; imagensId: number }>(`/api/tasks/${parentId}/confirm-recording`, { method: 'POST', body: JSON.stringify(data) })
 export const fetchTask = (id: number) => apiFetch<{ task: Task; comments: TaskComment[]; history: TaskHistory[]; attachments: TaskAttachment[]; timeEntries: TimeEntry[]; totalTimeSeconds: number; activeTimer: TimeEntry | null }>(`/api/tasks/${id}`)
 export const updateTask = (id: number, data: Partial<Task>) => apiFetch(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) })
